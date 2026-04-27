@@ -1,16 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-const statusValidator = v.union(
-  v.literal("MC"),
-  v.literal("LD"),
-  v.literal("EX RMJ"),
-  v.literal("EX STAY IN"),
-  v.literal("EX CAMO"),
-  v.literal("EX FLEGS"),
-  v.literal("EX HEAVY LOAD"),
-  v.literal("EX SQUATTING"),
-);
+import { statusValidator } from "./statusValidator";
 
 export default defineSchema({
   appUsers: defineTable({

@@ -1,26 +1,31 @@
-export const STATUS_VALUES = [
-  "MC",
-  "LD",
-  "EX RMJ",
-  "EX STAY IN",
-  "EX CAMO",
-  "EX FLEGS",
-  "EX HEAVY LOAD",
-  "EX SQUATTING"
+export const STATUS_DEFINITIONS = [
+  { value: "MC", affectsParadeState: true },
+  { value: "LD", affectsParadeState: false },
+  { value: "EX RMJ", affectsParadeState: false },
+  { value: "EX STAY IN", affectsParadeState: true },
+  { value: "EX CAMO", affectsParadeState: false },
+  { value: "EX FLEGS", affectsParadeState: false },
+  { value: "EX HEAVY LOAD", affectsParadeState: false },
+  { value: "EX SQUATTING", affectsParadeState: false },
 ] as const;
 
-export type Status = (typeof STATUS_VALUES)[number];
+export type Status = (typeof STATUS_DEFINITIONS)[number]["value"];
 
-export const STATUS_AFFECTS_PARADE_STATE: Record<Status, boolean> = {
-  MC: true,
-  LD: false,
-  "EX RMJ": false,
-  "EX STAY IN": true,
-  "EX CAMO": false,
-  "EX FLEGS": false,
-  "EX HEAVY LOAD": false,
-  "EX SQUATTING": false
-};
+function mapStatusValues<const T extends readonly { value: string }[]>(definitions: T) {
+  return definitions.map((definition) => definition.value) as [
+    T[number]["value"],
+    ...T[number]["value"][],
+  ];
+}
+
+export const STATUS_VALUES = mapStatusValues(STATUS_DEFINITIONS);
+
+export const STATUS_AFFECTS_PARADE_STATE = Object.fromEntries(
+  STATUS_DEFINITIONS.map((definition) => [
+    definition.value,
+    definition.affectsParadeState,
+  ]),
+) as Record<Status, boolean>;
 
 export function doesStatusAffectParadeState(status: Status) {
   return STATUS_AFFECTS_PARADE_STATE[status];

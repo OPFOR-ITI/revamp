@@ -10,18 +10,8 @@ import {
   getTodaySingaporeDayIndex,
 } from "../src/lib/date";
 import { mutation, query } from "./_generated/server";
+import { statusValidator } from "./statusValidator";
 import { ensureCurrentUser } from "./users";
-
-const statusValidator = v.union(
-  v.literal("MC"),
-  v.literal("LD"),
-  v.literal("EX RMJ"),
-  v.literal("EX STAY IN"),
-  v.literal("EX CAMO"),
-  v.literal("EX FLEGS"),
-  v.literal("EX HEAVY LOAD"),
-  v.literal("EX SQUATTING"),
-);
 
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");

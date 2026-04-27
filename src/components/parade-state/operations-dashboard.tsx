@@ -524,10 +524,6 @@ function AddRecordDialog({
                 <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
                   <div>
                     <FormLabel>Parade-state impact</FormLabel>
-                    <FormDescription>
-                      Derived from the selected status. MC affects parade state,
-                      while LD, RMJ, and FLEGS do not.
-                    </FormDescription>
                   </div>
                   <ImpactBadge status={selectedStatus} />
                 </div>
@@ -691,8 +687,8 @@ function EditRecordDialog({
           <DialogTitle>Edit Record</DialogTitle>
           <DialogDescription>
             Update status, dates, or remarks. Parade-state impact is derived
-            from status, while serviceman identity stays locked to preserve the
-            historical snapshot.
+            automatically from status, while serviceman identity stays locked
+            to preserve the historical snapshot.
           </DialogDescription>
         </DialogHeader>
 
@@ -731,6 +727,9 @@ function EditRecordDialog({
                   <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
                     <div>
                       <FormLabel>Parade-state impact</FormLabel>
+                      <FormDescription>
+                        Derived automatically from the selected status.
+                      </FormDescription>
                     </div>
                     <ImpactBadge status={selectedStatus} />
                   </div>
