@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 
 import { ConvexClientProvider } from "@/components/providers/convex-client-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { getToken } from "@/lib/auth-server";
 import "./globals.css";
 
@@ -36,7 +37,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full">
         <ConvexClientProvider initialToken={initialToken}>
-          {children}
+          <TooltipProvider>{children}</TooltipProvider>
         </ConvexClientProvider>
       </body>
     </html>

@@ -43,6 +43,7 @@ export function PendingApprovalPanel({
           ? "An admin has rejected this account. You remain signed in here only to view the status and sign out."
           : "Your account exists, but an admin has not approved it for operations access yet."
       }
+      embedded
     >
       <div className="space-y-5">
         <div className="rounded-2xl border border-emerald-950/10 bg-emerald-950/[0.03] p-4">

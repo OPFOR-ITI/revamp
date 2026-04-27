@@ -5,9 +5,26 @@ export const STATUS_VALUES = [
   "EX STAY IN",
   "EX CAMO",
   "EX FLEGS",
+  "EX HEAVY LOAD",
+  "EX SQUATTING"
 ] as const;
 
 export type Status = (typeof STATUS_VALUES)[number];
+
+export const STATUS_AFFECTS_PARADE_STATE: Record<Status, boolean> = {
+  MC: true,
+  LD: false,
+  "EX RMJ": false,
+  "EX STAY IN": true,
+  "EX CAMO": false,
+  "EX FLEGS": false,
+  "EX HEAVY LOAD": false,
+  "EX SQUATTING": false
+};
+
+export function doesStatusAffectParadeState(status: Status) {
+  return STATUS_AFFECTS_PARADE_STATE[status];
+}
 
 export const USER_ROLE_VALUES = ["admin", "operator"] as const;
 export type UserRole = (typeof USER_ROLE_VALUES)[number];

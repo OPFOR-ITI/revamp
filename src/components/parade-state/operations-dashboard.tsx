@@ -1,15 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { format, parseISO } from "date-fns";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
+  ChevronsUpDown,
+  CalendarDays,
   ClipboardList,
   Loader2,
+  LogOut,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -26,6 +29,7 @@ import {
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -44,7 +48,10 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -57,6 +64,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -71,8 +83,24 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -81,16 +109,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_REMARKS_LENGTH,
   PERSONNEL_ROUTE_PATH,
   STATUS_VALUES,
+  doesStatusAffectParadeState,
   type Status,
   type UserRole,
 } from "@/lib/constants";
 import {
+  dateStringToDayIndex,
   formatDateLabel,
   formatTimestampLabel,
   getTemporalBucketForDayRange,
@@ -98,6 +127,7 @@ import {
   getTodaySingaporeDayIndex,
 } from "@/lib/date";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 import {
   formatDesignation,
   personnelRecordSchema,
@@ -108,7 +138,6 @@ const addRecordSchema = z
   .object({
     personnelKey: z.string().min(1, "Select a serviceman."),
     status: z.enum(STATUS_VALUES),
-    affectParadeState: z.boolean(),
     startDate: z.string().min(1, "Start date is required."),
     endDate: z.string().min(1, "End date is required."),
     remarks: z
@@ -129,7 +158,6 @@ const addRecordSchema = z
 const editRecordSchema = z
   .object({
     status: z.enum(STATUS_VALUES),
-    affectParadeState: z.boolean(),
     startDate: z.string().min(1, "Start date is required."),
     endDate: z.string().min(1, "End date is required."),
     remarks: z
@@ -156,13 +184,13 @@ type EditRecordValues = z.infer<typeof editRecordSchema>;
 type AdjustEndDateValues = z.infer<typeof adjustEndDateSchema>;
 type RecordTemporalFilter = "all" | "active" | "past" | "future";
 type ImpactFilter = "all" | "impact" | "no-impact";
+type DashboardView = "current-state" | "record-log";
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
 
 function getEmptyAddRecordValues(): AddRecordValues {
   return {
     personnelKey: "",
     status: STATUS_VALUES[0],
-    affectParadeState: true,
     startDate: getTodaySingaporeDateString(),
     endDate: "",
     remarks: "",
@@ -179,6 +207,93 @@ function getRecordTemporalBucket(record: ParadeStateRecordDoc) {
 
 function formatRemarks(value?: string) {
   return value?.trim() ? value.trim() : "No remarks";
+}
+
+function ImpactBadge({ status }: { status: Status }) {
+  const affectsParadeState = doesStatusAffectParadeState(status);
+
+  return (
+    <Badge
+      variant={affectsParadeState ? "default" : "outline"}
+      className={affectsParadeState ? "bg-emerald-800 text-white" : ""}
+    >
+      {affectsParadeState ? "Affects parade state" : "No parade-state impact"}
+    </Badge>
+  );
+}
+
+function getViewerInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function dateStringToDate(value: string) {
+  return parseISO(value);
+}
+
+function dateToString(value: Date) {
+  return format(value, "yyyy-MM-dd");
+}
+
+function DateField({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+  minDate,
+  description,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  minDate?: string;
+  description?: string;
+}) {
+  const selectedDate = value ? dateStringToDate(value) : undefined;
+
+  return (
+    <FormItem>
+      <FormLabel htmlFor={id}>{label}</FormLabel>
+      <Popover>
+        <PopoverTrigger
+          id={id}
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "h-10 w-full justify-between px-3 text-left font-normal",
+            !value && "text-muted-foreground",
+          )}
+        >
+          <span>{value ? formatDateLabel(value) : "Select date"}</span>
+          <CalendarDays className="size-4 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(nextDate) => {
+              if (nextDate) {
+                onChange(dateToString(nextDate));
+              }
+            }}
+            disabled={
+              minDate
+                ? (date) => dateStringToDayIndex(dateToString(date)) < dateStringToDayIndex(minDate)
+                : undefined
+            }
+          />
+        </PopoverContent>
+      </Popover>
+      {description ? <FormDescription>{description}</FormDescription> : null}
+      <FormMessage>{error}</FormMessage>
+    </FormItem>
+  );
 }
 
 function PersonnelPreview({
@@ -241,14 +356,7 @@ function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={record.status} />
-            <Badge
-              variant={record.affectParadeState ? "default" : "outline"}
-              className={record.affectParadeState ? "bg-emerald-800 text-white" : ""}
-            >
-              {record.affectParadeState
-                ? "Affects parade state"
-                : "No parade-state impact"}
-            </Badge>
+            <ImpactBadge status={record.status} />
           </div>
           <p className="text-sm font-medium text-zinc-900">
             {formatDateLabel(record.startDate)} to {formatDateLabel(record.endDate)}
@@ -295,9 +403,13 @@ function AddRecordDialog({
     control: form.control,
     name: "status",
   });
-  const affectParadeState = useWatch({
+  const startDate = useWatch({
     control: form.control,
-    name: "affectParadeState",
+    name: "startDate",
+  });
+  const endDate = useWatch({
+    control: form.control,
+    name: "endDate",
   });
   const selectedPersonnel = personnel.find(
     (person) => person.personnelKey === selectedPersonnelKey,
@@ -329,7 +441,6 @@ function AddRecordDialog({
         platoon: selectedPersonnel.platoon,
         designation: selectedPersonnel.designation,
         status: values.status,
-        affectParadeState: values.affectParadeState,
         startDate: values.startDate,
         endDate: values.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
@@ -412,47 +523,44 @@ function AddRecordDialog({
               <FormItem>
                 <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
                   <div>
-                    <FormLabel>Affect Parade State</FormLabel>
+                    <FormLabel>Parade-state impact</FormLabel>
                     <FormDescription>
-                      Defaults to on for parade-state impacting records.
+                      Derived from the selected status. MC affects parade state,
+                      while LD, RMJ, and FLEGS do not.
                     </FormDescription>
                   </div>
-                  <Switch
-                    checked={!!affectParadeState}
-                    onCheckedChange={(checked) =>
-                      form.setValue("affectParadeState", checked, {
-                        shouldDirty: true,
-                      })
-                    }
-                  />
+                  <ImpactBadge status={selectedStatus} />
                 </div>
               </FormItem>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <FormItem>
-                <FormLabel htmlFor="add-start-date">Start date</FormLabel>
-                <FormControl>
-                  <Input
-                    id="add-start-date"
-                    type="date"
-                    {...form.register("startDate")}
-                  />
-                </FormControl>
-                <FormMessage>{form.formState.errors.startDate?.message}</FormMessage>
-              </FormItem>
+              <DateField
+                id="add-start-date"
+                label="Start date"
+                value={startDate}
+                onChange={(nextValue) =>
+                  form.setValue("startDate", nextValue, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                error={form.formState.errors.startDate?.message}
+              />
 
-              <FormItem>
-                <FormLabel htmlFor="add-end-date">End date</FormLabel>
-                <FormControl>
-                  <Input
-                    id="add-end-date"
-                    type="date"
-                    {...form.register("endDate")}
-                  />
-                </FormControl>
-                <FormMessage>{form.formState.errors.endDate?.message}</FormMessage>
-              </FormItem>
+              <DateField
+                id="add-end-date"
+                label="End date"
+                value={endDate}
+                onChange={(nextValue) =>
+                  form.setValue("endDate", nextValue, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                minDate={startDate}
+                error={form.formState.errors.endDate?.message}
+              />
             </div>
 
             <FormItem>
@@ -508,7 +616,6 @@ function EditRecordDialog({
     resolver: zodResolver(editRecordSchema),
     defaultValues: {
       status: STATUS_VALUES[0],
-      affectParadeState: true,
       startDate: getTodaySingaporeDateString(),
       endDate: getTodaySingaporeDateString(),
       remarks: "",
@@ -519,9 +626,13 @@ function EditRecordDialog({
     control: form.control,
     name: "status",
   });
-  const affectParadeState = useWatch({
+  const startDate = useWatch({
     control: form.control,
-    name: "affectParadeState",
+    name: "startDate",
+  });
+  const endDate = useWatch({
+    control: form.control,
+    name: "endDate",
   });
 
   useEffect(() => {
@@ -531,7 +642,6 @@ function EditRecordDialog({
 
     form.reset({
       status: record.status,
-      affectParadeState: record.affectParadeState,
       startDate: record.startDate,
       endDate: record.endDate,
       remarks: record.remarks ?? "",
@@ -549,7 +659,6 @@ function EditRecordDialog({
       await updateRecord({
         recordId: record._id,
         status: values.status,
-        affectParadeState: values.affectParadeState,
         startDate: values.startDate,
         endDate: values.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
@@ -581,8 +690,9 @@ function EditRecordDialog({
         <DialogHeader>
           <DialogTitle>Edit Record</DialogTitle>
           <DialogDescription>
-            Update status, impact, dates, or remarks. Serviceman identity stays
-            locked to preserve the historical snapshot.
+            Update status, dates, or remarks. Parade-state impact is derived
+            from status, while serviceman identity stays locked to preserve the
+            historical snapshot.
           </DialogDescription>
         </DialogHeader>
 
@@ -620,47 +730,40 @@ function EditRecordDialog({
                 <FormItem>
                   <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
                     <div>
-                      <FormLabel>Affect Parade State</FormLabel>
-                      <FormDescription>
-                        Toggle whether this record counts toward parade-state impact.
-                      </FormDescription>
+                      <FormLabel>Parade-state impact</FormLabel>
                     </div>
-                    <Switch
-                      checked={!!affectParadeState}
-                      onCheckedChange={(checked) =>
-                        form.setValue("affectParadeState", checked, {
-                          shouldDirty: true,
-                        })
-                      }
-                    />
+                    <ImpactBadge status={selectedStatus} />
                   </div>
                 </FormItem>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
-                <FormItem>
-                  <FormLabel htmlFor="edit-start-date">Start date</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="edit-start-date"
-                      type="date"
-                      {...form.register("startDate")}
-                    />
-                  </FormControl>
-                  <FormMessage>{form.formState.errors.startDate?.message}</FormMessage>
-                </FormItem>
+                <DateField
+                  id="edit-start-date"
+                  label="Start date"
+                  value={startDate}
+                  onChange={(nextValue) =>
+                    form.setValue("startDate", nextValue, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  error={form.formState.errors.startDate?.message}
+                />
 
-                <FormItem>
-                  <FormLabel htmlFor="edit-end-date">End date</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="edit-end-date"
-                      type="date"
-                      {...form.register("endDate")}
-                    />
-                  </FormControl>
-                  <FormMessage>{form.formState.errors.endDate?.message}</FormMessage>
-                </FormItem>
+                <DateField
+                  id="edit-end-date"
+                  label="End date"
+                  value={endDate}
+                  onChange={(nextValue) =>
+                    form.setValue("endDate", nextValue, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  minDate={startDate}
+                  error={form.formState.errors.endDate?.message}
+                />
               </div>
 
               <FormItem>
@@ -713,6 +816,10 @@ function AdjustEndDateDialog({
     },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const endDate = useWatch({
+    control: form.control,
+    name: "endDate",
+  });
 
   useEffect(() => {
     if (!record) {
@@ -771,18 +878,20 @@ function AdjustEndDateDialog({
                 </p>
               </div>
 
-              <FormItem>
-                <FormLabel htmlFor="adjust-end-date">New end date</FormLabel>
-                <FormControl>
-                  <Input
-                    id="adjust-end-date"
-                    type="date"
-                    min={record.startDate}
-                    {...form.register("endDate")}
-                  />
-                </FormControl>
-                <FormMessage>{form.formState.errors.endDate?.message}</FormMessage>
-              </FormItem>
+              <DateField
+                id="adjust-end-date"
+                label="New end date"
+                value={endDate}
+                onChange={(nextValue) =>
+                  form.setValue("endDate", nextValue, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                minDate={record.startDate}
+                description="Dates are inclusive, so closing today keeps the record active for today."
+                error={form.formState.errors.endDate?.message}
+              />
 
               <DialogFooter className="gap-2">
                 <Button
@@ -852,35 +961,6 @@ function PersonnelRecordsSheet({
   );
 }
 
-function OverviewCard({
-  title,
-  value,
-  description,
-  icon,
-}: {
-  title: string;
-  value: string | number;
-  description: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
-      <CardHeader className="flex-row items-start justify-between gap-4">
-        <div>
-          <CardDescription>{title}</CardDescription>
-          <CardTitle className="mt-2 text-3xl">{value}</CardTitle>
-        </div>
-        <div className="rounded-2xl bg-emerald-950/[0.06] p-3 text-emerald-900">
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0 text-sm text-zinc-600">
-        {description}
-      </CardContent>
-    </Card>
-  );
-}
-
 export function OperationsDashboard({
   viewer,
 }: {
@@ -913,6 +993,7 @@ export function OperationsDashboard({
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
   const [temporalFilter, setTemporalFilter] =
     useState<RecordTemporalFilter>("all");
+  const [activeView, setActiveView] = useState<DashboardView>("current-state");
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
@@ -985,10 +1066,6 @@ export function OperationsDashboard({
 
   const currentState = currentStateQuery ?? [];
   const records = recordLog ?? [];
-  const activeRecordCount = currentState.reduce(
-    (sum, row) => sum + row.activeRecordCount,
-    0,
-  );
   const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
     (left, right) => left.localeCompare(right),
   );
@@ -1022,416 +1099,521 @@ export function OperationsDashboard({
     );
   });
 
+  const activeViewTitle =
+    activeView === "current-state" ? "Current State" : "Record Log";
+  const activeViewDescription =
+    activeView === "current-state"
+      ? "One row per serviceman with overlapping active statuses grouped together."
+      : "Historical parade-state records with compact client-side filters.";
+  const nominalRollCount =
+    isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
+  const viewerInitials = getViewerInitials(viewer.name);
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(79,120,67,0.14),_transparent_42%),linear-gradient(180deg,_#f4f0e3_0%,_#ebe5d4_45%,_#e1e7d9_100%)] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[28px] border border-emerald-950/10 bg-[linear-gradient(135deg,_rgba(49,80,42,0.96),_rgba(87,103,53,0.88))] px-6 py-6 text-white shadow-2xl shadow-emerald-950/10">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-emerald-100/70">
-                Revamp - Daily operations board
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              {viewer.role === "admin" ? (
-                <Link
-                  href="/admin/users"
-                  className={buttonVariants({
-                    variant: "secondary",
-                    size: "sm",
-                    className: "bg-white/12 text-white hover:bg-white/18",
-                  })}
-                >
-                  <ShieldCheck className="size-4" />
-                  User approvals
-                </Link>
-              ) : null}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="bg-white/12 text-white hover:bg-white/18"
-                onClick={handleRefreshPersonnel}
-                disabled={isPersonnelLoading}
-              >
-                {isPersonnelLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Refresh personnel
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="bg-white/12 text-white hover:bg-white/18"
-                onClick={handleSignOut}
-                disabled={isSigningOut}
-              >
-                {isSigningOut ? <Loader2 className="size-4 animate-spin" /> : null}
-                Sign out
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-emerald-50/85">
-            <Badge className="bg-white/12 text-white">Approved {viewer.role}</Badge>
-            <span className="inline-flex items-center gap-2">
-              <UserRound className="size-4" />
-              {viewer.name}
-            </span>
-            <span className="text-emerald-100/70">{viewer.email}</span>
-          </div>
-        </section>
-
-        {personnelError ? (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            Personnel refresh failed: {personnelError}
-          </div>
-        ) : null}
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <OverviewCard
-            title="Nominal Roll"
-            value={isPersonnelLoading && !personnel.length ? "--" : personnel.length}
-            description="Current personnel rows from the linked Personnel sheet."
-            icon={<UserRound className="size-5" />}
-          />
-          <OverviewCard
-            title="Currently Affected"
-            value={currentStateQuery === undefined ? "--" : currentState.length}
-            description="Distinct servicemen with at least one active inclusive-date record."
-            icon={<ShieldCheck className="size-5" />}
-          />
-          <OverviewCard
-            title="Active Records"
-            value={currentStateQuery === undefined ? "--" : activeRecordCount}
-            description="Total active parade-state records, including overlaps."
-            icon={<ClipboardList className="size-5" />}
-          />
-        </section>
-
-        <section className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight text-zinc-950">
-              Operations
-            </h2>
-            <p className="mt-1 text-sm text-zinc-600">
-              Manage parade-state records without editing personnel in-app.
+    <SidebarProvider
+      defaultOpen
+      className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(79,120,67,0.14),_transparent_42%),linear-gradient(180deg,_#f4f0e3_0%,_#ebe5d4_45%,_#e1e7d9_100%)]"
+    >
+      <Sidebar variant="inset" collapsible="icon" className="border-sidebar-border/70">
+        <SidebarHeader className="gap-2 p-3">
+          <div className="rounded-2xl border border-sidebar-border/80 bg-white/70 px-3 py-3 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-900/55">
+              Revamp
+            </p>
+            <p className="mt-1 text-sm font-medium text-zinc-900">
+              Daily operations board
             </p>
           </div>
-          <Button onClick={() => setIsAddDialogOpen(true)}>
-            <Plus className="size-4" />
-            Add Parade State
-          </Button>
-        </section>
+        </SidebarHeader>
 
-        <Tabs defaultValue="current-state" className="gap-4">
-          <TabsList variant="line">
-            <TabsTrigger value="current-state">Current State</TabsTrigger>
-            <TabsTrigger value="record-log">Record Log</TabsTrigger>
-          </TabsList>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Navigate</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={activeView === "current-state"}
+                    tooltip="Current State"
+                    onClick={() => setActiveView("current-state")}
+                  >
+                    <ShieldCheck className="size-4" />
+                    <span>Current State</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={activeView === "record-log"}
+                    tooltip="Record Log"
+                    onClick={() => setActiveView("record-log")}
+                  >
+                    <ClipboardList className="size-4" />
+                    <span>Record Log</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
 
-          <TabsContent value="current-state">
-            <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
-              <CardHeader>
-                <CardTitle>Distinct Current State</CardTitle>
-                <CardDescription>
-                  One row per serviceman with all currently active overlapping
-                  statuses grouped together.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {currentStateQuery === undefined ? (
-                  <div className="space-y-3">
-                    <Skeleton className="h-12 w-full rounded-xl" />
-                    <Skeleton className="h-12 w-full rounded-xl" />
-                    <Skeleton className="h-12 w-full rounded-xl" />
+        <SidebarSeparator />
+
+        <SidebarFooter className="gap-3 p-3">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <SidebarMenuButton
+                  size="lg"
+                  className="bg-[linear-gradient(135deg,_rgba(49,80,42,0.96),_rgba(87,103,53,0.88))] text-white hover:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] hover:text-white data-active:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] data-[state=open]:bg-white/10"
+                  render={<DropdownMenuTrigger />}
+                >
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-white/14 text-xs font-semibold text-white">
+                    {viewerInitials || "U"}
                   </div>
-                ) : currentState.length ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Serviceman</TableHead>
-                        <TableHead>Platoon</TableHead>
-                        <TableHead>Designation</TableHead>
-                        <TableHead>Active statuses</TableHead>
-                        <TableHead>Impact</TableHead>
-                        <TableHead>Record count</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {currentState.map((row) => (
-                        <TableRow key={row.personnelKey}>
-                          <TableCell>
-                            <div className="min-w-44">
-                              <p className="font-medium text-zinc-950">
-                                {row.rank} {row.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {row.records.length} active record
-                                {row.records.length === 1 ? "" : "s"}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>{row.platoon}</TableCell>
-                          <TableCell>{formatDesignation(row.designation)}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-2">
-                              {row.activeStatuses.map((status) => (
-                                <StatusBadge key={`${row.personnelKey}-${status}`} status={status} />
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={row.hasParadeStateImpact ? "default" : "outline"}
-                              className={
-                                row.hasParadeStateImpact
-                                  ? "bg-emerald-800 text-white"
-                                  : ""
-                              }
-                            >
-                              {row.hasParadeStateImpact
-                                ? "Impacts parade state"
-                                : "No impact"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{row.activeRecordCount}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setSelectedRow(row)}
-                            >
-                              View records
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                    No active parade-state records today.
+                  <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">{viewer.name}</span>
+                      <span className="rounded-md bg-white/12 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-emerald-50/90">
+                        {nominalRollCount}
+                      </span>
+                    </div>
+                    <span className="truncate text-xs text-emerald-100/75">
+                      {viewer.email}
+                    </span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="record-log">
-            <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
-              <CardHeader>
-                <CardTitle>Record Log</CardTitle>
-                <CardDescription>
-                  Full historical log with client-side filters for status, platoon,
-                  impact, and time bucket.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-4 rounded-2xl border border-border bg-background/80 p-4 lg:grid-cols-[2fr,1fr,1fr,1fr,1fr]">
-                  <div className="grid gap-2">
-                    <Label htmlFor="record-search">Search by name</Label>
-                    <Input
-                      id="record-search"
-                      placeholder="Search rank or serviceman name"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Status</Label>
-                    <Select
-                      value={statusFilter}
-                      onValueChange={(value) =>
-                        setStatusFilter((value ?? "all") as Status | "all")
-                      }
+                  <ChevronsUpDown className="ml-auto size-4 text-emerald-50/80" />
+                </SidebarMenuButton>
+                <DropdownMenuContent side="top" align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="px-2 py-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-900 text-xs font-semibold text-white">
+                          {viewerInitials || "U"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {viewer.name}
+                          </p>
+                          <p className="truncate text-xs font-normal text-muted-foreground">
+                            {viewer.email}
+                          </p>
+                        </div>
+                      </div>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem disabled>
+                      <UserRound className="size-4" />
+                      Nominal Roll
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {nominalRollCount}
+                      </span>
+                    </DropdownMenuItem>
+                    {viewer.role === "admin" ? (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          router.push("/admin/users");
+                        }}
+                      >
+                        <ShieldCheck className="size-4" />
+                        User approvals
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void handleRefreshPersonnel();
+                      }}
+                      disabled={isPersonnelLoading}
                     >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All statuses</SelectItem>
-                        {STATUS_VALUES.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {status}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Platoon</Label>
-                    <Select
-                      value={platoonFilter}
-                      onValueChange={(value) => setPlatoonFilter(value ?? "all")}
+                      {isPersonnelLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                      Refresh personnel
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => {
+                        void handleSignOut();
+                      }}
+                      disabled={isSigningOut}
                     >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All platoons" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All platoons</SelectItem>
-                        {platoonOptions.map((platoon) => (
-                          <SelectItem key={platoon} value={platoon}>
-                            {platoon}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      {isSigningOut ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <LogOut className="size-4" />
+                      )}
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
 
-                  <div className="grid gap-2">
-                    <Label>Impact</Label>
-                    <Select
-                      value={impactFilter}
-                      onValueChange={(value) =>
-                        setImpactFilter((value ?? "all") as ImpactFilter)
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All records</SelectItem>
-                        <SelectItem value="impact">Impact only</SelectItem>
-                        <SelectItem value="no-impact">No impact only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Time bucket</Label>
-                    <Select
-                      value={temporalFilter}
-                      onValueChange={(value) =>
-                        setTemporalFilter((value ?? "all") as RecordTemporalFilter)
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All records</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="future">Future</SelectItem>
-                        <SelectItem value="past">Past</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+      <SidebarInset className="bg-transparent">
+        <div className="flex min-h-svh flex-col">
+          <header className="sticky top-0 z-20 border-b border-emerald-950/10 bg-background/80 backdrop-blur">
+            <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
+              <SidebarTrigger className="shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                  Revamp operations board
+                </p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="text-lg font-semibold tracking-tight text-zinc-950">
+                    {activeViewTitle}
+                  </h1>
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-950/10 bg-white/70 text-zinc-700"
+                  >
+                    {viewer.name}
+                  </Badge>
                 </div>
+              </div>
+              <Button className="shrink-0" onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="size-4" />
+                Add Parade State
+              </Button>
+            </div>
+          </header>
 
-                {recordLog === undefined ? (
-                  <div className="space-y-3">
-                    <Skeleton className="h-12 w-full rounded-xl" />
-                    <Skeleton className="h-12 w-full rounded-xl" />
-                    <Skeleton className="h-12 w-full rounded-xl" />
-                  </div>
-                ) : filteredRecords.length ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Serviceman</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Period</TableHead>
-                        <TableHead>Impact</TableHead>
-                        <TableHead>Submitted by</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRecords.map((record) => (
-                        <TableRow key={record._id}>
-                          <TableCell>
-                            <div className="min-w-52">
-                              <p className="font-medium text-zinc-950">
-                                {record.rank} {record.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {record.platoon} / {formatDesignation(record.designation)}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-2">
-                              <StatusBadge status={record.status} />
-                              <Badge variant="outline">
-                                {getRecordTemporalBucket(record)}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="min-w-44">
-                              <p>
-                                {formatDateLabel(record.startDate)} to{" "}
-                                {formatDateLabel(record.endDate)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatRemarks(record.remarks)}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={record.affectParadeState ? "default" : "outline"}
-                              className={
-                                record.affectParadeState
-                                  ? "bg-emerald-800 text-white"
-                                  : ""
-                              }
-                            >
-                              {record.affectParadeState ? "Impact" : "No impact"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="min-w-44">
-                              <p className="font-medium text-zinc-950">
-                                {record.submittedByName}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatTimestampLabel(record.createdAt)}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                className={buttonVariants({
-                                  variant: "outline",
-                                  size: "sm",
-                                })}
-                              >
-                                Manage
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setSelectedRecord(record)}>
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => setRecordForEndDateAdjust(record)}
-                                >
-                                  Adjust end date
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                    No records match the current filters.
-                  </div>
-                )}
+          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-4 py-4 sm:px-6">
+            {personnelError ? (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Personnel refresh failed: {personnelError}
+              </div>
+            ) : null}
+
+            <Card
+              size="sm"
+              className="border-emerald-950/10 bg-white/75 shadow-sm shadow-emerald-950/5"
+            >
+              <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-950">{activeViewTitle}</p>
+                  <p className="text-sm text-zinc-600">{activeViewDescription}</p>
+                </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+
+            {activeView === "current-state" ? (
+              <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
+                <CardHeader className="border-b border-emerald-950/10">
+                  <CardTitle>Distinct Current State</CardTitle>
+                  <CardDescription>
+                    One row per serviceman with all currently active overlapping
+                    statuses grouped together.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  {currentStateQuery === undefined ? (
+                    <div className="space-y-3">
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                    </div>
+                  ) : currentState.length ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Serviceman</TableHead>
+                            <TableHead>Platoon</TableHead>
+                            <TableHead>Designation</TableHead>
+                            <TableHead>Active statuses</TableHead>
+                            <TableHead>Impact</TableHead>
+                            <TableHead>Record count</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {currentState.map((row) => (
+                            <TableRow key={row.personnelKey}>
+                              <TableCell>
+                                <div className="min-w-44">
+                                  <p className="font-medium text-zinc-950">
+                                    {row.rank} {row.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {row.records.length} active record
+                                    {row.records.length === 1 ? "" : "s"}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>{row.platoon}</TableCell>
+                              <TableCell>{formatDesignation(row.designation)}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-2">
+                                  {row.activeStatuses.map((status) => (
+                                    <StatusBadge
+                                      key={`${row.personnelKey}-${status}`}
+                                      status={status}
+                                    />
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={row.hasParadeStateImpact ? "default" : "outline"}
+                                  className={
+                                    row.hasParadeStateImpact
+                                      ? "bg-emerald-800 text-white"
+                                      : ""
+                                  }
+                                >
+                                  {row.hasParadeStateImpact
+                                    ? "Impacts parade state"
+                                    : "No impact"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{row.activeRecordCount}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedRow(row)}
+                                >
+                                  View records
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                      No active parade-state records today.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
+                <CardHeader className="border-b border-emerald-950/10">
+                  <CardTitle>Record Log</CardTitle>
+                  <CardDescription>
+                    Full historical log with compact filters for status, platoon,
+                    impact, and time bucket.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-4">
+                  <div className="grid gap-3 rounded-2xl border border-border bg-background/80 p-3 lg:grid-cols-[2fr,1fr,1fr,1fr,1fr]">
+                    <div className="grid gap-2">
+                      <Label htmlFor="record-search">Search by name</Label>
+                      <Input
+                        id="record-search"
+                        placeholder="Search rank or serviceman name"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Status</Label>
+                      <Select
+                        value={statusFilter}
+                        onValueChange={(value) =>
+                          setStatusFilter((value ?? "all") as Status | "all")
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          {STATUS_VALUES.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Platoon</Label>
+                      <Select
+                        value={platoonFilter}
+                        onValueChange={(value) => setPlatoonFilter(value ?? "all")}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All platoons" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All platoons</SelectItem>
+                          {platoonOptions.map((platoon) => (
+                            <SelectItem key={platoon} value={platoon}>
+                              {platoon}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Impact</Label>
+                      <Select
+                        value={impactFilter}
+                        onValueChange={(value) =>
+                          setImpactFilter((value ?? "all") as ImpactFilter)
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All records</SelectItem>
+                          <SelectItem value="impact">Impact only</SelectItem>
+                          <SelectItem value="no-impact">No impact only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Time bucket</Label>
+                      <Select
+                        value={temporalFilter}
+                        onValueChange={(value) =>
+                          setTemporalFilter((value ?? "all") as RecordTemporalFilter)
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="All" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All records</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="future">Future</SelectItem>
+                          <SelectItem value="past">Past</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {recordLog === undefined ? (
+                    <div className="space-y-3">
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                    </div>
+                  ) : filteredRecords.length ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Serviceman</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Period</TableHead>
+                            <TableHead>Impact</TableHead>
+                            <TableHead>Submitted by</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredRecords.map((record) => (
+                            <TableRow key={record._id}>
+                              <TableCell>
+                                <div className="min-w-52">
+                                  <p className="font-medium text-zinc-950">
+                                    {record.rank} {record.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {record.platoon} / {formatDesignation(record.designation)}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-2">
+                                  <StatusBadge status={record.status} />
+                                  <Badge variant="outline">
+                                    {getRecordTemporalBucket(record)}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="min-w-44">
+                                  <p>
+                                    {formatDateLabel(record.startDate)} to{" "}
+                                    {formatDateLabel(record.endDate)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatRemarks(record.remarks)}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={record.affectParadeState ? "default" : "outline"}
+                                  className={
+                                    record.affectParadeState
+                                      ? "bg-emerald-800 text-white"
+                                      : ""
+                                  }
+                                >
+                                  {record.affectParadeState ? "Impact" : "No impact"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="min-w-44">
+                                  <p className="font-medium text-zinc-950">
+                                    {record.submittedByName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatTimestampLabel(record.createdAt)}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    className={buttonVariants({
+                                      variant: "outline",
+                                      size: "sm",
+                                    })}
+                                  >
+                                    Manage
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => setSelectedRecord(record)}
+                                    >
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => setRecordForEndDateAdjust(record)}
+                                    >
+                                      Adjust end date
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                      No records match the current filters.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      </SidebarInset>
 
       <AddRecordDialog
         open={isAddDialogOpen}
@@ -1468,6 +1650,6 @@ export function OperationsDashboard({
         }}
         selectedRow={selectedRow}
       />
-    </main>
+    </SidebarProvider>
   );
 }

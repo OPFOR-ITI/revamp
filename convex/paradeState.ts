@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values";
 
-import { MAX_REMARKS_LENGTH, type Status } from "../src/lib/constants";
+import {
+  MAX_REMARKS_LENGTH,
+  doesStatusAffectParadeState,
+  type Status,
+} from "../src/lib/constants";
 import {
   dateStringToDayIndex,
   getTodaySingaporeDayIndex,
@@ -15,6 +19,8 @@ const statusValidator = v.union(
   v.literal("EX STAY IN"),
   v.literal("EX CAMO"),
   v.literal("EX FLEGS"),
+  v.literal("EX HEAVY LOAD"),
+  v.literal("EX SQUATTING"),
 );
 
 function normalizeText(value: string) {
@@ -70,6 +76,15 @@ function sortCurrentStateRows<
   );
 }
 
+function withDerivedImpact<T extends { status: Status; affectParadeState: boolean }>(
+  record: T,
+) {
+  return {
+    ...record,
+    affectParadeState: doesStatusAffectParadeState(record.status),
+  };
+}
+
 export const createRecord = mutation({
   args: {
     personnelKey: v.string(),
@@ -78,7 +93,6 @@ export const createRecord = mutation({
     platoon: v.string(),
     designation: v.string(),
     status: statusValidator,
-    affectParadeState: v.boolean(),
     startDate: v.string(),
     endDate: v.string(),
     remarks: v.optional(v.string()),
@@ -97,7 +111,7 @@ export const createRecord = mutation({
       platoon: normalizeText(args.platoon),
       designation: normalizeText(args.designation),
       status: args.status,
-      affectParadeState: args.affectParadeState,
+      affectParadeState: doesStatusAffectParadeState(args.status),
       startDate: args.startDate,
       endDate: args.endDate,
       startDay,
@@ -116,7 +130,6 @@ export const updateRecord = mutation({
   args: {
     recordId: v.id("paradeStateRecords"),
     status: statusValidator,
-    affectParadeState: v.boolean(),
     startDate: v.string(),
     endDate: v.string(),
     remarks: v.optional(v.string()),
@@ -133,7 +146,7 @@ export const updateRecord = mutation({
 
     await ctx.db.patch(args.recordId, {
       status: args.status,
-      affectParadeState: args.affectParadeState,
+      affectParadeState: doesStatusAffectParadeState(args.status),
       startDate: args.startDate,
       endDate: args.endDate,
       startDay,
@@ -179,6 +192,7 @@ export const listCurrentState = query({
       .collect();
 
     const activeRecords = records
+      .map(withDerivedImpact)
       .filter((record) => record.startDay <= todayDay)
       .sort(sortRecordsDescending);
 
@@ -226,7 +240,7 @@ export const listRecordLog = query({
       .order("desc")
       .collect();
 
-    return records;
+    return records.map(withDerivedImpact);
   },
 });
 
@@ -243,6 +257,6 @@ export const listRecordsForPersonnel = query({
       .order("desc")
       .collect();
 
-    return records.sort(sortRecordsDescending);
+    return records.map(withDerivedImpact).sort(sortRecordsDescending);
   },
 });

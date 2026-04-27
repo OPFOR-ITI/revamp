@@ -8,6 +8,8 @@ const statusValidator = v.union(
   v.literal("EX STAY IN"),
   v.literal("EX CAMO"),
   v.literal("EX FLEGS"),
+  v.literal("EX HEAVY LOAD"),
+  v.literal("EX SQUATTING"),
 );
 
 export default defineSchema({
