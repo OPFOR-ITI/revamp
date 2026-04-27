@@ -9,6 +9,8 @@ const statusBadgeClasses: Record<Status, string> = {
   "EX STAY IN": "bg-sky-100 text-sky-950 ring-1 ring-sky-200",
   "EX CAMO": "bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200",
   "EX FLEGS": "bg-orange-100 text-orange-950 ring-1 ring-orange-200",
+  "EX HEAVY LOAD": "bg-orange-100 text-orange-950 ring-1 ring-orange-200",
+  "EX SQUATTING": "bg-orange-100 text-orange-950 ring-1 ring-orange-200"
 };
 
 export function StatusBadge({ status }: { status: Status }) {
