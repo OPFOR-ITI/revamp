@@ -1,8 +1,10 @@
 import { ConvexError, v } from "convex/values";
 
 import {
+  MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
   doesStatusAffectParadeState,
+  isOtherStatus,
   type Status,
 } from "../src/lib/constants";
 import {
@@ -31,6 +33,39 @@ function normalizeRemarks(value?: string) {
   }
 
   return trimmed;
+}
+
+function normalizeCustomStatus(value?: string) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed.replace(/\s+/g, " ");
+
+  if (normalized.length > MAX_CUSTOM_STATUS_LENGTH) {
+    throw new ConvexError(
+      `Custom status must be ${MAX_CUSTOM_STATUS_LENGTH} characters or fewer.`,
+    );
+  }
+
+  return normalized;
+}
+
+function resolveParadeStateImpact(
+  status: Status,
+  affectParadeState?: boolean,
+) {
+  if (isOtherStatus(status)) {
+    if (affectParadeState === undefined) {
+      throw new ConvexError("Select whether the custom status affects parade state.");
+    }
+
+    return affectParadeState;
+  }
+
+  return doesStatusAffectParadeState(status);
 }
 
 function validateDateRange(startDate: string, endDate: string) {
@@ -66,12 +101,17 @@ function sortCurrentStateRows<
   );
 }
 
-function withDerivedImpact<T extends { status: Status; affectParadeState: boolean }>(
+function withDerivedImpact<
+  T extends { status: Status; customStatus?: string; affectParadeState: boolean },
+>(
   record: T,
 ) {
   return {
     ...record,
-    affectParadeState: doesStatusAffectParadeState(record.status),
+    affectParadeState: resolveParadeStateImpact(
+      record.status,
+      record.affectParadeState,
+    ),
   };
 }
 
@@ -83,6 +123,8 @@ export const createRecord = mutation({
     platoon: v.string(),
     designation: v.string(),
     status: statusValidator,
+    customStatus: v.optional(v.string()),
+    affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
     endDate: v.string(),
     remarks: v.optional(v.string()),
@@ -93,6 +135,11 @@ export const createRecord = mutation({
     });
     const { startDay, endDay } = validateDateRange(args.startDate, args.endDate);
     const now = Date.now();
+    const customStatus = normalizeCustomStatus(args.customStatus);
+
+    if (isOtherStatus(args.status) && !customStatus) {
+      throw new ConvexError("Enter the custom status for Others.");
+    }
 
     return await ctx.db.insert("paradeStateRecords", {
       personnelKey: normalizeText(args.personnelKey),
@@ -101,7 +148,11 @@ export const createRecord = mutation({
       platoon: normalizeText(args.platoon),
       designation: normalizeText(args.designation),
       status: args.status,
-      affectParadeState: doesStatusAffectParadeState(args.status),
+      customStatus,
+      affectParadeState: resolveParadeStateImpact(
+        args.status,
+        args.affectParadeState,
+      ),
       startDate: args.startDate,
       endDate: args.endDate,
       startDay,
@@ -120,6 +171,8 @@ export const updateRecord = mutation({
   args: {
     recordId: v.id("paradeStateRecords"),
     status: statusValidator,
+    customStatus: v.optional(v.string()),
+    affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
     endDate: v.string(),
     remarks: v.optional(v.string()),
@@ -133,10 +186,19 @@ export const updateRecord = mutation({
     }
 
     const { startDay, endDay } = validateDateRange(args.startDate, args.endDate);
+    const customStatus = normalizeCustomStatus(args.customStatus);
+
+    if (isOtherStatus(args.status) && !customStatus) {
+      throw new ConvexError("Enter the custom status for Others.");
+    }
 
     await ctx.db.patch(args.recordId, {
       status: args.status,
-      affectParadeState: doesStatusAffectParadeState(args.status),
+      customStatus,
+      affectParadeState: resolveParadeStateImpact(
+        args.status,
+        args.affectParadeState,
+      ),
       startDate: args.startDate,
       endDate: args.endDate,
       startDay,
@@ -198,8 +260,16 @@ export const listCurrentState = query({
       .map((groupRecords) => {
         const firstRecord = groupRecords[0];
         const activeStatuses = Array.from(
-          new Set(groupRecords.map((record) => record.status)),
-        ) as Status[];
+          new Map(
+            groupRecords.map((record) => [
+              `${record.status}::${record.customStatus ?? ""}`,
+              {
+                status: record.status,
+                customStatus: record.customStatus,
+              },
+            ]),
+          ).values(),
+        );
 
         return {
           personnelKey: firstRecord.personnelKey,

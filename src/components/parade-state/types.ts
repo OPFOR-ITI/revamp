@@ -3,6 +3,10 @@ import type { Status } from "@/lib/constants";
 
 export type ParadeStateRecordDoc = Doc<"paradeStateRecords">;
 export type AppUserDoc = Doc<"appUsers">;
+export type ActiveStatusSummary = {
+  status: Status;
+  customStatus?: string;
+};
 
 export type CurrentStateRow = {
   personnelKey: string;
@@ -10,7 +14,7 @@ export type CurrentStateRow = {
   name: string;
   platoon: string;
   designation: string;
-  activeStatuses: Status[];
+  activeStatuses: ActiveStatusSummary[];
   activeRecordCount: number;
   hasParadeStateImpact: boolean;
   records: ParadeStateRecordDoc[];

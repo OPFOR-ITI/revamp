@@ -83,6 +83,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import {
   Sidebar,
   SidebarContent,
@@ -111,10 +112,13 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
+  OTHER_STATUS_VALUE,
   PERSONNEL_ROUTE_PATH,
   STATUS_VALUES,
-  doesStatusAffectParadeState,
+  formatStatusLabel,
+  isOtherStatus,
   type Status,
   type UserRole,
 } from "@/lib/constants";
@@ -138,6 +142,14 @@ const addRecordSchema = z
   .object({
     personnelKey: z.string().min(1, "Select a serviceman."),
     status: z.enum(STATUS_VALUES),
+    customStatus: z
+      .string()
+      .max(
+        MAX_CUSTOM_STATUS_LENGTH,
+        `Custom status must be ${MAX_CUSTOM_STATUS_LENGTH} characters or fewer.`,
+      )
+      .optional(),
+    affectParadeState: z.boolean().optional(),
     startDate: z.string().min(1, "Start date is required."),
     endDate: z.string().min(1, "End date is required."),
     remarks: z
@@ -153,11 +165,27 @@ const addRecordSchema = z
         message: "End date must be on or after the start date.",
       });
     }
+
+    if (values.status === OTHER_STATUS_VALUE && !values.customStatus?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customStatus"],
+        message: "Enter the custom status for Others.",
+      });
+    }
   });
 
 const editRecordSchema = z
   .object({
     status: z.enum(STATUS_VALUES),
+    customStatus: z
+      .string()
+      .max(
+        MAX_CUSTOM_STATUS_LENGTH,
+        `Custom status must be ${MAX_CUSTOM_STATUS_LENGTH} characters or fewer.`,
+      )
+      .optional(),
+    affectParadeState: z.boolean().optional(),
     startDate: z.string().min(1, "Start date is required."),
     endDate: z.string().min(1, "End date is required."),
     remarks: z
@@ -171,6 +199,14 @@ const editRecordSchema = z
         code: z.ZodIssueCode.custom,
         path: ["endDate"],
         message: "End date must be on or after the start date.",
+      });
+    }
+
+    if (values.status === OTHER_STATUS_VALUE && !values.customStatus?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customStatus"],
+        message: "Enter the custom status for Others.",
       });
     }
   });
@@ -191,6 +227,8 @@ function getEmptyAddRecordValues(): AddRecordValues {
   return {
     personnelKey: "",
     status: STATUS_VALUES[0],
+    customStatus: "",
+    affectParadeState: false,
     startDate: getTodaySingaporeDateString(),
     endDate: "",
     remarks: "",
@@ -209,9 +247,7 @@ function formatRemarks(value?: string) {
   return value?.trim() ? value.trim() : "No remarks";
 }
 
-function ImpactBadge({ status }: { status: Status }) {
-  const affectsParadeState = doesStatusAffectParadeState(status);
-
+function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
   return (
     <Badge
       variant={affectsParadeState ? "default" : "outline"}
@@ -355,8 +391,11 @@ function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={record.status} />
-            <ImpactBadge status={record.status} />
+            <StatusBadge
+              status={record.status}
+              customStatus={record.customStatus}
+            />
+            <ImpactBadge affectsParadeState={record.affectParadeState} />
           </div>
           <p className="text-sm font-medium text-zinc-900">
             {formatDateLabel(record.startDate)} to {formatDateLabel(record.endDate)}
@@ -370,6 +409,59 @@ function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
       <p className="mt-3 text-sm leading-6 text-zinc-600">
         {formatRemarks(record.remarks)}
       </p>
+    </div>
+  );
+}
+
+function OtherStatusFields({
+  customStatus,
+  customStatusError,
+  onCustomStatusChange,
+  affectParadeState,
+  onAffectParadeStateChange,
+}: {
+  customStatus: string;
+  customStatusError?: string;
+  onCustomStatusChange: (value: string) => void;
+  affectParadeState: boolean;
+  onAffectParadeStateChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2">
+      <FormItem>
+        <FormLabel htmlFor="custom-status">Custom status</FormLabel>
+        <FormControl>
+          <Input
+            id="custom-status"
+            value={customStatus}
+            maxLength={MAX_CUSTOM_STATUS_LENGTH}
+            placeholder="Type the status to show after Others"
+            onChange={(event) => onCustomStatusChange(event.target.value)}
+          />
+        </FormControl>
+        <FormDescription>
+          Displays as {OTHER_STATUS_VALUE}(typed status).
+        </FormDescription>
+        <FormMessage>{customStatusError}</FormMessage>
+      </FormItem>
+
+      <FormItem>
+        <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
+          <div>
+            <FormLabel>Parade-state impact</FormLabel>
+            <FormDescription>
+              Choose whether this custom status affects parade state.
+            </FormDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            <ImpactBadge affectsParadeState={affectParadeState} />
+            <Switch
+              checked={affectParadeState}
+              onCheckedChange={onAffectParadeStateChange}
+            />
+          </div>
+        </div>
+      </FormItem>
     </div>
   );
 }
@@ -403,6 +495,14 @@ function AddRecordDialog({
     control: form.control,
     name: "status",
   });
+  const customStatus = useWatch({
+    control: form.control,
+    name: "customStatus",
+  });
+  const affectParadeState = useWatch({
+    control: form.control,
+    name: "affectParadeState",
+  });
   const startDate = useWatch({
     control: form.control,
     name: "startDate",
@@ -423,6 +523,21 @@ function AddRecordDialog({
     }
   }, [form, open]);
 
+  useEffect(() => {
+    if (isOtherStatus(selectedStatus)) {
+      return;
+    }
+
+    form.setValue("customStatus", "", {
+      shouldDirty: false,
+      shouldValidate: false,
+    });
+    form.setValue("affectParadeState", false, {
+      shouldDirty: false,
+      shouldValidate: false,
+    });
+  }, [form, selectedStatus]);
+
   async function onSubmit(values: AddRecordValues) {
     if (!selectedPersonnel) {
       form.setError("personnelKey", {
@@ -441,6 +556,12 @@ function AddRecordDialog({
         platoon: selectedPersonnel.platoon,
         designation: selectedPersonnel.designation,
         status: values.status,
+        customStatus: isOtherStatus(values.status)
+          ? values.customStatus?.trim() || undefined
+          : undefined,
+        affectParadeState: isOtherStatus(values.status)
+          ? values.affectParadeState
+          : undefined,
         startDate: values.startDate,
         endDate: values.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
@@ -519,16 +640,27 @@ function AddRecordDialog({
                 </Select>
                 <FormMessage>{form.formState.errors.status?.message}</FormMessage>
               </FormItem>
-
-              <FormItem>
-                <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
-                  <div>
-                    <FormLabel>Parade-state impact</FormLabel>
-                  </div>
-                  <ImpactBadge status={selectedStatus} />
-                </div>
-              </FormItem>
             </div>
+
+            {isOtherStatus(selectedStatus) ? (
+              <OtherStatusFields
+                customStatus={customStatus ?? ""}
+                customStatusError={form.formState.errors.customStatus?.message}
+                onCustomStatusChange={(value) =>
+                  form.setValue("customStatus", value, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+                affectParadeState={!!affectParadeState}
+                onAffectParadeStateChange={(value) =>
+                  form.setValue("affectParadeState", value, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+              />
+            ) : null}
 
             <div className="grid gap-5 sm:grid-cols-2">
               <DateField
@@ -612,6 +744,8 @@ function EditRecordDialog({
     resolver: zodResolver(editRecordSchema),
     defaultValues: {
       status: STATUS_VALUES[0],
+      customStatus: "",
+      affectParadeState: false,
       startDate: getTodaySingaporeDateString(),
       endDate: getTodaySingaporeDateString(),
       remarks: "",
@@ -621,6 +755,14 @@ function EditRecordDialog({
   const selectedStatus = useWatch({
     control: form.control,
     name: "status",
+  });
+  const customStatus = useWatch({
+    control: form.control,
+    name: "customStatus",
+  });
+  const affectParadeState = useWatch({
+    control: form.control,
+    name: "affectParadeState",
   });
   const startDate = useWatch({
     control: form.control,
@@ -638,11 +780,28 @@ function EditRecordDialog({
 
     form.reset({
       status: record.status,
+      customStatus: record.customStatus ?? "",
+      affectParadeState: record.affectParadeState,
       startDate: record.startDate,
       endDate: record.endDate,
       remarks: record.remarks ?? "",
     });
   }, [form, record]);
+
+  useEffect(() => {
+    if (isOtherStatus(selectedStatus)) {
+      return;
+    }
+
+    form.setValue("customStatus", "", {
+      shouldDirty: false,
+      shouldValidate: false,
+    });
+    form.setValue("affectParadeState", false, {
+      shouldDirty: false,
+      shouldValidate: false,
+    });
+  }, [form, selectedStatus]);
 
   async function onSubmit(values: EditRecordValues) {
     if (!record) {
@@ -655,6 +814,12 @@ function EditRecordDialog({
       await updateRecord({
         recordId: record._id,
         status: values.status,
+        customStatus: isOtherStatus(values.status)
+          ? values.customStatus?.trim() || undefined
+          : undefined,
+        affectParadeState: isOtherStatus(values.status)
+          ? values.affectParadeState
+          : undefined,
         startDate: values.startDate,
         endDate: values.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
@@ -686,8 +851,7 @@ function EditRecordDialog({
         <DialogHeader>
           <DialogTitle>Edit Record</DialogTitle>
           <DialogDescription>
-            Update status, dates, or remarks. Parade-state impact is derived
-            automatically from status, while serviceman identity stays locked
+            Update status, dates, or remarks. Serviceman identity stays locked
             to preserve the historical snapshot.
           </DialogDescription>
         </DialogHeader>
@@ -722,19 +886,27 @@ function EditRecordDialog({
                   </Select>
                   <FormMessage>{form.formState.errors.status?.message}</FormMessage>
                 </FormItem>
-
-                <FormItem>
-                  <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
-                    <div>
-                      <FormLabel>Parade-state impact</FormLabel>
-                      <FormDescription>
-                        Derived automatically from the selected status.
-                      </FormDescription>
-                    </div>
-                    <ImpactBadge status={selectedStatus} />
-                  </div>
-                </FormItem>
               </div>
+
+              {isOtherStatus(selectedStatus) ? (
+                <OtherStatusFields
+                  customStatus={customStatus ?? ""}
+                  customStatusError={form.formState.errors.customStatus?.message}
+                  onCustomStatusChange={(value) =>
+                    form.setValue("customStatus", value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  affectParadeState={!!affectParadeState}
+                  onAffectParadeStateChange={(value) =>
+                    form.setValue("affectParadeState", value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              ) : null}
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <DateField
@@ -1084,7 +1256,7 @@ export function OperationsDashboard({
     const matchesTemporal =
       temporalFilter === "all" ? true : temporalBucket === temporalFilter;
     const matchesSearch = deferredSearch
-      ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)}`
+      ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)} ${formatStatusLabel(record.status, record.customStatus)}`
           .toLowerCase()
           .includes(deferredSearch)
       : true;
@@ -1355,8 +1527,9 @@ export function OperationsDashboard({
                                 <div className="flex flex-wrap gap-2">
                                   {row.activeStatuses.map((status) => (
                                     <StatusBadge
-                                      key={`${row.personnelKey}-${status}`}
-                                      status={status}
+                                      key={`${row.personnelKey}-${status.status}-${status.customStatus ?? ""}`}
+                                      status={status.status}
+                                      customStatus={status.customStatus}
                                     />
                                   ))}
                                 </div>
@@ -1534,7 +1707,10 @@ export function OperationsDashboard({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-wrap gap-2">
-                                  <StatusBadge status={record.status} />
+                                  <StatusBadge
+                                    status={record.status}
+                                    customStatus={record.customStatus}
+                                  />
                                   <Badge variant="outline">
                                     {getRecordTemporalBucket(record)}
                                   </Badge>

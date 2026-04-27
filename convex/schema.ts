@@ -31,6 +31,7 @@ export default defineSchema({
     platoon: v.string(),
     designation: v.string(),
     status: statusValidator,
+    customStatus: v.optional(v.string()),
     affectParadeState: v.boolean(),
     startDate: v.string(),
     endDate: v.string(),
