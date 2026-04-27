@@ -16,6 +16,7 @@ export default async function AdminUsersPage() {
       description="Approve or reject signed-up operators before they can access the operations workspace."
       navItems={[
         { label: "Operations", href: "/", icon: "operations" },
+        { label: "Duty Calendar", href: "/duties", icon: "duties" },
         {
           label: "User approvals",
           href: "/admin/users",

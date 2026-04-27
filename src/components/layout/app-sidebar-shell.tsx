@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  CalendarDays,
   ChevronsUpDown,
   ClipboardList,
   Loader2,
@@ -41,7 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { authClient } from "@/lib/auth-client";
 import type { UserRole } from "@/lib/constants";
 
-type NavIcon = "operations" | "approvals" | "pending";
+type NavIcon = "operations" | "approvals" | "pending" | "duties";
 
 type NavItem = {
   label: string;
@@ -65,6 +66,8 @@ function getNavIcon(icon: NavIcon) {
       return <ShieldCheck className="size-4" />;
     case "pending":
       return <UserRound className="size-4" />;
+    case "duties":
+      return <CalendarDays className="size-4" />;
     case "operations":
     default:
       return <ClipboardList className="size-4" />;

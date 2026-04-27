@@ -1322,6 +1322,15 @@ export function OperationsDashboard({
                     <span>Record Log</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Duty Calendar"
+                    onClick={() => router.push("/duties")}
+                  >
+                    <CalendarDays className="size-4" />
+                    <span>Duty Calendar</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

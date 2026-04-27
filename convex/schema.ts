@@ -48,4 +48,35 @@ export default defineSchema({
     .index("by_endDay", ["endDay"])
     .index("by_createdAt", ["createdAt"])
     .index("by_status", ["status"]),
+
+  dutyAssignments: defineTable({
+    personnelKey: v.string(),
+    rank: v.string(),
+    name: v.string(),
+    platoon: v.string(),
+    designation: v.string(),
+    dutyType: v.string(),
+    dutyTypeNormalized: v.string(),
+    dutyPreset: v.union(
+      v.literal("DOO"),
+      v.literal("CDS"),
+      v.literal("COS"),
+      v.null(),
+    ),
+    dateOfDuty: v.string(),
+    dutyDay: v.number(),
+    points: v.number(),
+    isExtra: v.boolean(),
+    createdByName: v.string(),
+    createdByEmail: v.string(),
+    createdByAuthUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_dutyDay", ["dutyDay"])
+    .index("by_dateOfDuty_and_personnelKey_and_dutyTypeNormalized", [
+      "dateOfDuty",
+      "personnelKey",
+      "dutyTypeNormalized",
+    ]),
 });
