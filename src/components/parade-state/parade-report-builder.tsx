@@ -311,8 +311,8 @@ export function ParadeReportBuilder({
                   setAsAtTime(event.target.value.replace(/\D/g, "").slice(0, 4))
                 }
                 placeholder="HHmm"
+                className="h-10"
               />
-              <FormDescription>24-hour format, e.g. 0830.</FormDescription>
               <FormMessage>{timeError}</FormMessage>
             </FormItem>
 
@@ -322,7 +322,7 @@ export function ParadeReportBuilder({
                 variant="outline"
                 onClick={handleRefresh}
                 disabled={isPersonnelLoading}
-                className="flex-1"
+                className="flex-1 h-10"
               >
                 {isPersonnelLoading ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -335,7 +335,7 @@ export function ParadeReportBuilder({
                 type="button"
                 onClick={() => void handleCopy("Parade report copied again.")}
                 disabled={!reportState.text || isCopying}
-                className="flex-1"
+                className="flex-1 h-10"
               >
                 {isCopying ? (
                   <Loader2 className="size-4 animate-spin" />

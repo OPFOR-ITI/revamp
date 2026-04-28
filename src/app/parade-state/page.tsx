@@ -16,7 +16,7 @@ export default async function ParadeReportPage() {
       title="Parade Report"
       description="Generate a copy-ready company parade-state message from live personnel, status, and duty data."
       navGroups={getPrimaryNavGroups({
-        activeItem: "parade-report",
+        activeItem: "parade-state",
         role: user.role,
       })}
     >

@@ -11,7 +11,7 @@ export type AppNavIcon =
 export type AppNavItemId =
   | "current-state"
   | "record-log"
-  | "parade-report"
+  | "parade-state"
   | "duty-calendar"
   | "user-approvals"
   | "approval-status";
@@ -55,11 +55,11 @@ export function getPrimaryNavGroups({
           active: activeItem === "record-log",
         },
         {
-          id: "parade-report",
-          label: "Parade Report",
-          href: "/parade-report",
+          id: "parade-state",
+          label: "Parade State",
+          href: "/parade-state",
           icon: "report",
-          active: activeItem === "parade-report",
+          active: activeItem === "parade-state",
         },
       ],
     },

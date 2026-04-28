@@ -1,6 +1,7 @@
 import type { DutyAssignmentDoc } from "@/components/duties/types";
 import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
 import {
+  dateStringToDayIndex,
   formatCompactDateLabel,
   isValidTimeHHmm,
 } from "@/lib/date";
@@ -238,14 +239,23 @@ function comparePrimaryRecords(left: ParadeStateRecordDoc, right: ParadeStateRec
 }
 
 function formatCompactDateRange(record: Pick<ParadeStateRecordDoc, "startDate" | "endDate" | "isPermanent">) {
+  const start = formatCompactDateLabel(record.startDate);
+
   if (record.isPermanent || !record.endDate) {
-    return "Permanent";
+    return start;
   }
 
-  const start = formatCompactDateLabel(record.startDate);
   const end = formatCompactDateLabel(record.endDate);
 
   return start === end ? start : `${start}-${end}`;
+}
+
+function getInclusiveDurationDays(record: Pick<ParadeStateRecordDoc, "startDate" | "endDate" | "isPermanent">) {
+  if (record.isPermanent || !record.endDate) {
+    return null;
+  }
+
+  return dateStringToDayIndex(record.endDate) - dateStringToDayIndex(record.startDate) + 1;
 }
 
 function formatStatusLabel(record: Pick<ParadeStateRecordDoc, "status" | "customStatus">) {
@@ -258,10 +268,17 @@ function formatStatusLabel(record: Pick<ParadeStateRecordDoc, "status" | "custom
 
 function formatStatusSummary(record: StatusLikeRecord) {
   const label = formatStatusLabel(record);
+  const durationDays = getInclusiveDurationDays(record);
   const datePart = formatCompactDateRange(record);
   const remarkPart = record.remarks?.trim() ? `; ${record.remarks.trim()}` : "";
 
-  return `${label} ${datePart}${remarkPart}`.trim();
+  if (record.isPermanent || !record.endDate) {
+    return `PERM ${label}${remarkPart}`.trim();
+  }
+
+  const durationPart = durationDays ? `${durationDays}D ` : "";
+
+  return `${label} ${durationPart}${datePart}${remarkPart}`.trim();
 }
 
 function formatPersonLine(personnel: PersonnelRecord, details: string) {
@@ -279,9 +296,12 @@ function formatAbsenceLine(absence: PersonnelAbsence) {
 
 function formatStatusEntry(
   personnel: PersonnelRecord,
-  record: ParadeStateRecordDoc,
+  records: ParadeStateRecordDoc[],
 ) {
-  return formatPersonLine(personnel, formatStatusSummary(record));
+  return formatPersonLine(
+    personnel,
+    records.map((record) => formatStatusSummary(record)).join(", "),
+  );
 }
 
 function normalizeOthersBreakdownLabel(record: ParadeStateRecordDoc) {
@@ -507,12 +527,15 @@ export function buildParadeReportData({
     const platoonAbsences = allAbsences
       .filter((absence) => absence.personnel.platoon === platoon)
       .sort((left, right) => compareByName(left.personnel, right.personnel));
-    const platoonStatuses = platoonPersonnel.flatMap((person) =>
-      (activeStatusRecords.get(person.personnelKey) ?? [])
+    const platoonStatuses = platoonPersonnel.flatMap((person) => {
+      const personStatuses = (activeStatusRecords.get(person.personnelKey) ?? [])
         .slice()
-        .sort((left, right) => comparePrimaryRecords(left, right))
-        .map((record) => formatStatusEntry(person, record)),
-    );
+        .sort((left, right) => comparePrimaryRecords(left, right));
+
+      return personStatuses.length > 0
+        ? [formatStatusEntry(person, personStatuses)]
+        : [];
+    });
     const mcEntries = platoonAbsences
       .filter((absence) => absence.companyBucket === "MC")
       .map(formatAbsenceLine);
