@@ -5,6 +5,7 @@ import {
   MAX_REMARKS_LENGTH,
   doesStatusAffectParadeState,
   isOtherStatus,
+  isPermanentRecord,
   type Status,
 } from "../src/lib/constants";
 import {
@@ -68,15 +69,28 @@ function resolveParadeStateImpact(
   return doesStatusAffectParadeState(status);
 }
 
-function validateDateRange(startDate: string, endDate: string) {
+function resolveRecordDates(
+  startDate: string,
+  endDate: string | undefined,
+  isPermanent: boolean,
+) {
   const startDay = dateStringToDayIndex(startDate);
+
+  if (isPermanent) {
+    return { startDay, endDate: undefined, endDay: undefined };
+  }
+
+  if (!endDate) {
+    throw new ConvexError("End date is required unless the status is permanent.");
+  }
+
   const endDay = dateStringToDayIndex(endDate);
 
   if (endDay < startDay) {
     throw new ConvexError("End date must be on or after the start date.");
   }
 
-  return { startDay, endDay };
+  return { startDay, endDate, endDay };
 }
 
 function sortRecordsDescending<T extends { startDay: number; createdAt: number }>(
@@ -102,12 +116,19 @@ function sortCurrentStateRows<
 }
 
 function withDerivedImpact<
-  T extends { status: Status; customStatus?: string; affectParadeState: boolean },
+  T extends {
+    status: Status;
+    customStatus?: string;
+    affectParadeState: boolean;
+    isPermanent?: boolean;
+    endDate?: string;
+  },
 >(
   record: T,
 ) {
   return {
     ...record,
+    isPermanent: isPermanentRecord(record),
     affectParadeState: resolveParadeStateImpact(
       record.status,
       record.affectParadeState,
@@ -124,16 +145,21 @@ export const createRecord = mutation({
     designation: v.string(),
     status: statusValidator,
     customStatus: v.optional(v.string()),
+    isPermanent: v.boolean(),
     affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
-    endDate: v.string(),
+    endDate: v.optional(v.string()),
     remarks: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { appUser, authUser } = await ensureCurrentUser(ctx, {
       requireApproved: true,
     });
-    const { startDay, endDay } = validateDateRange(args.startDate, args.endDate);
+    const { startDay, endDate, endDay } = resolveRecordDates(
+      args.startDate,
+      args.endDate?.trim() || undefined,
+      args.isPermanent,
+    );
     const now = Date.now();
     const customStatus = normalizeCustomStatus(args.customStatus);
 
@@ -149,12 +175,13 @@ export const createRecord = mutation({
       designation: normalizeText(args.designation),
       status: args.status,
       customStatus,
+      isPermanent: args.isPermanent,
       affectParadeState: resolveParadeStateImpact(
         args.status,
         args.affectParadeState,
       ),
       startDate: args.startDate,
-      endDate: args.endDate,
+      endDate,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
@@ -172,9 +199,10 @@ export const updateRecord = mutation({
     recordId: v.id("paradeStateRecords"),
     status: statusValidator,
     customStatus: v.optional(v.string()),
+    isPermanent: v.boolean(),
     affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
-    endDate: v.string(),
+    endDate: v.optional(v.string()),
     remarks: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -185,7 +213,11 @@ export const updateRecord = mutation({
       throw new ConvexError("The selected record no longer exists.");
     }
 
-    const { startDay, endDay } = validateDateRange(args.startDate, args.endDate);
+    const { startDay, endDate, endDay } = resolveRecordDates(
+      args.startDate,
+      args.endDate?.trim() || undefined,
+      args.isPermanent,
+    );
     const customStatus = normalizeCustomStatus(args.customStatus);
 
     if (isOtherStatus(args.status) && !customStatus) {
@@ -195,12 +227,13 @@ export const updateRecord = mutation({
     await ctx.db.patch(args.recordId, {
       status: args.status,
       customStatus,
+      isPermanent: args.isPermanent,
       affectParadeState: resolveParadeStateImpact(
         args.status,
         args.affectParadeState,
       ),
       startDate: args.startDate,
-      endDate: args.endDate,
+      endDate,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
@@ -222,10 +255,18 @@ export const adjustEndDate = mutation({
       throw new ConvexError("The selected record no longer exists.");
     }
 
-    const { endDay } = validateDateRange(existing.startDate, args.endDate);
+    if (isPermanentRecord(existing)) {
+      throw new ConvexError("Permanent records do not have an end date to adjust.");
+    }
+
+    const { endDate, endDay } = resolveRecordDates(
+      existing.startDate,
+      args.endDate,
+      false,
+    );
 
     await ctx.db.patch(args.recordId, {
-      endDate: args.endDate,
+      endDate,
       endDay,
       updatedAt: Date.now(),
     });
@@ -238,12 +279,16 @@ export const listCurrentState = query({
     await ensureCurrentUser(ctx, { requireApproved: true });
 
     const todayDay = getTodaySingaporeDayIndex();
-    const records = await ctx.db
+    const permanentRecords = await ctx.db
+      .query("paradeStateRecords")
+      .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
+      .collect();
+    const datedRecords = await ctx.db
       .query("paradeStateRecords")
       .withIndex("by_endDay", (q) => q.gte("endDay", todayDay))
       .collect();
 
-    const activeRecords = records
+    const activeRecords = [...permanentRecords, ...datedRecords]
       .map(withDerivedImpact)
       .filter((record) => record.startDay <= todayDay)
       .sort(sortRecordsDescending);

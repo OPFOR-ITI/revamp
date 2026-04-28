@@ -32,11 +32,12 @@ export default defineSchema({
     designation: v.string(),
     status: statusValidator,
     customStatus: v.optional(v.string()),
+    isPermanent: v.optional(v.boolean()),
     affectParadeState: v.boolean(),
     startDate: v.string(),
-    endDate: v.string(),
+    endDate: v.optional(v.string()),
     startDay: v.number(),
-    endDay: v.number(),
+    endDay: v.optional(v.number()),
     remarks: v.optional(v.string()),
     submittedByName: v.string(),
     submittedByEmail: v.string(),
@@ -45,6 +46,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_personnelKey", ["personnelKey"])
+    .index("by_isPermanent", ["isPermanent"])
     .index("by_endDay", ["endDay"])
     .index("by_createdAt", ["createdAt"])
     .index("by_status", ["status"]),

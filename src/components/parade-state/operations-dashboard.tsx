@@ -119,6 +119,7 @@ import {
   STATUS_VALUES,
   formatStatusLabel,
   isOtherStatus,
+  isPermanentRecord,
   type Status,
   type UserRole,
 } from "@/lib/constants";
@@ -150,15 +151,28 @@ const addRecordSchema = z
       )
       .optional(),
     affectParadeState: z.boolean().optional(),
+    isPermanent: z.boolean(),
     startDate: z.string().min(1, "Start date is required."),
-    endDate: z.string().min(1, "End date is required."),
+    endDate: z.string().optional(),
     remarks: z
       .string()
       .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
       .optional(),
   })
   .superRefine((values, ctx) => {
-    if (values.endDate < values.startDate) {
+    if (!values.isPermanent && !values.endDate?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date is required unless the status is permanent.",
+      });
+    }
+
+    if (
+      !values.isPermanent &&
+      values.endDate?.trim() &&
+      values.endDate < values.startDate
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["endDate"],
@@ -186,15 +200,28 @@ const editRecordSchema = z
       )
       .optional(),
     affectParadeState: z.boolean().optional(),
+    isPermanent: z.boolean(),
     startDate: z.string().min(1, "Start date is required."),
-    endDate: z.string().min(1, "End date is required."),
+    endDate: z.string().optional(),
     remarks: z
       .string()
       .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
       .optional(),
   })
   .superRefine((values, ctx) => {
-    if (values.endDate < values.startDate) {
+    if (!values.isPermanent && !values.endDate?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date is required unless the status is permanent.",
+      });
+    }
+
+    if (
+      !values.isPermanent &&
+      values.endDate?.trim() &&
+      values.endDate < values.startDate
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["endDate"],
@@ -229,6 +256,7 @@ function getEmptyAddRecordValues(): AddRecordValues {
     status: STATUS_VALUES[0],
     customStatus: "",
     affectParadeState: false,
+    isPermanent: false,
     startDate: getTodaySingaporeDateString(),
     endDate: "",
     remarks: "",
@@ -247,6 +275,18 @@ function formatRemarks(value?: string) {
   return value?.trim() ? value.trim() : "No remarks";
 }
 
+function formatRecordPeriod(record: {
+  startDate: string;
+  endDate?: string;
+  isPermanent?: boolean;
+}) {
+  if (isPermanentRecord(record)) {
+    return "Permanent";
+  }
+
+  return `${formatDateLabel(record.startDate)} to ${formatDateLabel(record.endDate ?? record.startDate)}`;
+}
+
 function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
   return (
     <Badge
@@ -255,6 +295,34 @@ function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
     >
       {affectsParadeState ? "Affects parade state" : "No parade-state impact"}
     </Badge>
+  );
+}
+
+function PermanentStatusField({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange: (value: boolean) => void;
+}) {
+  return (
+    <FormItem>
+      <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
+        <div>
+          <FormLabel>Permanent status</FormLabel>
+          <FormDescription>
+            Permanent statuses stay active from the start date onward and do not
+            use an end date.
+          </FormDescription>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant={checked ? "default" : "outline"} className={checked ? "bg-emerald-800 text-white" : ""}>
+            {checked ? "Permanent" : "Dated"}
+          </Badge>
+          <Switch checked={checked} onCheckedChange={onCheckedChange} />
+        </div>
+      </div>
+    </FormItem>
   );
 }
 
@@ -395,10 +463,11 @@ function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
               status={record.status}
               customStatus={record.customStatus}
             />
+            {isPermanentRecord(record) ? <Badge variant="outline">Permanent</Badge> : null}
             <ImpactBadge affectsParadeState={record.affectParadeState} />
           </div>
           <p className="text-sm font-medium text-zinc-900">
-            {formatDateLabel(record.startDate)} to {formatDateLabel(record.endDate)}
+            {formatRecordPeriod(record)}
           </p>
         </div>
         <div className="text-right text-xs text-muted-foreground">
@@ -503,6 +572,10 @@ function AddRecordDialog({
     control: form.control,
     name: "affectParadeState",
   });
+  const isPermanent = useWatch({
+    control: form.control,
+    name: "isPermanent",
+  });
   const startDate = useWatch({
     control: form.control,
     name: "startDate",
@@ -562,8 +635,9 @@ function AddRecordDialog({
         affectParadeState: isOtherStatus(values.status)
           ? values.affectParadeState
           : undefined,
+        isPermanent: values.isPermanent,
         startDate: values.startDate,
-        endDate: values.endDate,
+        endDate: values.isPermanent ? undefined : values.endDate?.trim() || undefined,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
       });
 
@@ -640,6 +714,16 @@ function AddRecordDialog({
                 </Select>
                 <FormMessage>{form.formState.errors.status?.message}</FormMessage>
               </FormItem>
+
+              <PermanentStatusField
+                checked={!!isPermanent}
+                onCheckedChange={(value) =>
+                  form.setValue("isPermanent", value, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  })
+                }
+              />
             </div>
 
             {isOtherStatus(selectedStatus) ? (
@@ -663,32 +747,41 @@ function AddRecordDialog({
             ) : null}
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <DateField
-                id="add-start-date"
-                label="Start date"
-                value={startDate}
-                onChange={(nextValue) =>
-                  form.setValue("startDate", nextValue, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                error={form.formState.errors.startDate?.message}
-              />
+              {isPermanent ? (
+                <div className="sm:col-span-2 flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                  No start or end date. Permanent statuses become active
+                  immediately and stay active until you edit the record later.
+                </div>
+              ) : (
+                <>
+                  <DateField
+                    id="add-start-date"
+                    label="Start date"
+                    value={startDate}
+                    onChange={(nextValue) =>
+                      form.setValue("startDate", nextValue, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    error={form.formState.errors.startDate?.message}
+                  />
 
-              <DateField
-                id="add-end-date"
-                label="End date"
-                value={endDate}
-                onChange={(nextValue) =>
-                  form.setValue("endDate", nextValue, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                minDate={startDate}
-                error={form.formState.errors.endDate?.message}
-              />
+                  <DateField
+                    id="add-end-date"
+                    label="End date"
+                    value={endDate ?? ""}
+                    onChange={(nextValue) =>
+                      form.setValue("endDate", nextValue, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    minDate={startDate}
+                    error={form.formState.errors.endDate?.message}
+                  />
+                </>
+              )}
             </div>
 
             <FormItem>
@@ -746,8 +839,9 @@ function EditRecordDialog({
       status: STATUS_VALUES[0],
       customStatus: "",
       affectParadeState: false,
+      isPermanent: false,
       startDate: getTodaySingaporeDateString(),
-      endDate: getTodaySingaporeDateString(),
+      endDate: "",
       remarks: "",
     },
   });
@@ -763,6 +857,10 @@ function EditRecordDialog({
   const affectParadeState = useWatch({
     control: form.control,
     name: "affectParadeState",
+  });
+  const isPermanent = useWatch({
+    control: form.control,
+    name: "isPermanent",
   });
   const startDate = useWatch({
     control: form.control,
@@ -782,8 +880,9 @@ function EditRecordDialog({
       status: record.status,
       customStatus: record.customStatus ?? "",
       affectParadeState: record.affectParadeState,
+      isPermanent: isPermanentRecord(record),
       startDate: record.startDate,
-      endDate: record.endDate,
+      endDate: record.endDate ?? "",
       remarks: record.remarks ?? "",
     });
   }, [form, record]);
@@ -820,8 +919,9 @@ function EditRecordDialog({
         affectParadeState: isOtherStatus(values.status)
           ? values.affectParadeState
           : undefined,
+        isPermanent: values.isPermanent,
         startDate: values.startDate,
-        endDate: values.endDate,
+        endDate: values.isPermanent ? undefined : values.endDate?.trim() || undefined,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
       });
 
@@ -886,6 +986,16 @@ function EditRecordDialog({
                   </Select>
                   <FormMessage>{form.formState.errors.status?.message}</FormMessage>
                 </FormItem>
+
+                <PermanentStatusField
+                  checked={!!isPermanent}
+                  onCheckedChange={(value) =>
+                    form.setValue("isPermanent", value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
               </div>
 
               {isOtherStatus(selectedStatus) ? (
@@ -909,32 +1019,41 @@ function EditRecordDialog({
               ) : null}
 
               <div className="grid gap-5 sm:grid-cols-2">
-                <DateField
-                  id="edit-start-date"
-                  label="Start date"
-                  value={startDate}
-                  onChange={(nextValue) =>
-                    form.setValue("startDate", nextValue, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                  error={form.formState.errors.startDate?.message}
-                />
+                {isPermanent ? (
+                  <div className="sm:col-span-2 flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                    No start or end date. Turn off permanent status if you need
+                    this record to use a dated range.
+                  </div>
+                ) : (
+                  <>
+                    <DateField
+                      id="edit-start-date"
+                      label="Start date"
+                      value={startDate}
+                      onChange={(nextValue) =>
+                        form.setValue("startDate", nextValue, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      error={form.formState.errors.startDate?.message}
+                    />
 
-                <DateField
-                  id="edit-end-date"
-                  label="End date"
-                  value={endDate}
-                  onChange={(nextValue) =>
-                    form.setValue("endDate", nextValue, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                  minDate={startDate}
-                  error={form.formState.errors.endDate?.message}
-                />
+                    <DateField
+                      id="edit-end-date"
+                      label="End date"
+                      value={endDate ?? ""}
+                      onChange={(nextValue) =>
+                        form.setValue("endDate", nextValue, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      minDate={startDate}
+                      error={form.formState.errors.endDate?.message}
+                    />
+                  </>
+                )}
               </div>
 
               <FormItem>
@@ -993,7 +1112,7 @@ function AdjustEndDateDialog({
   });
 
   useEffect(() => {
-    if (!record) {
+    if (!record || isPermanentRecord(record)) {
       return;
     }
 
@@ -1044,25 +1163,31 @@ function AdjustEndDateDialog({
                   {record.rank} {record.name}
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  Current range: {formatDateLabel(record.startDate)} to{" "}
-                  {formatDateLabel(record.endDate)}
+                  Current period: {formatRecordPeriod(record)}
                 </p>
               </div>
 
-              <DateField
-                id="adjust-end-date"
-                label="New end date"
-                value={endDate}
-                onChange={(nextValue) =>
-                  form.setValue("endDate", nextValue, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                minDate={record.startDate}
-                description="Dates are inclusive, so closing today keeps the record active for today."
-                error={form.formState.errors.endDate?.message}
-              />
+              {isPermanentRecord(record) ? (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  Permanent records do not have an end date. Edit the record and
+                  turn off permanent status first.
+                </div>
+              ) : (
+                <DateField
+                  id="adjust-end-date"
+                  label="New end date"
+                  value={endDate}
+                  onChange={(nextValue) =>
+                    form.setValue("endDate", nextValue, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  minDate={record.startDate}
+                  description="Dates are inclusive, so closing today keeps the record active for today."
+                  error={form.formState.errors.endDate?.message}
+                />
+              )}
 
               <DialogFooter className="gap-2">
                 <Button
@@ -1072,7 +1197,10 @@ function AdjustEndDateDialog({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || isPermanentRecord(record)}
+                >
                   {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
                   Update end date
                 </Button>
@@ -1720,6 +1848,9 @@ export function OperationsDashboard({
                                     status={record.status}
                                     customStatus={record.customStatus}
                                   />
+                                  {isPermanentRecord(record) ? (
+                                    <Badge variant="outline">Permanent</Badge>
+                                  ) : null}
                                   <Badge variant="outline">
                                     {getRecordTemporalBucket(record)}
                                   </Badge>
@@ -1727,10 +1858,7 @@ export function OperationsDashboard({
                               </TableCell>
                               <TableCell>
                                 <div className="min-w-44">
-                                  <p>
-                                    {formatDateLabel(record.startDate)} to{" "}
-                                    {formatDateLabel(record.endDate)}
-                                  </p>
+                                  <p>{formatRecordPeriod(record)}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {formatRemarks(record.remarks)}
                                   </p>
@@ -1774,11 +1902,13 @@ export function OperationsDashboard({
                                     >
                                       Edit
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => setRecordForEndDateAdjust(record)}
-                                    >
-                                      Adjust end date
-                                    </DropdownMenuItem>
+                                    {!isPermanentRecord(record) ? (
+                                      <DropdownMenuItem
+                                        onClick={() => setRecordForEndDateAdjust(record)}
+                                      >
+                                        Adjust end date
+                                      </DropdownMenuItem>
+                                    ) : null}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </TableCell>

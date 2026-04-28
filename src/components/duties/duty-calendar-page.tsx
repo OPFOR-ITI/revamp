@@ -604,7 +604,7 @@ function DutyAssignmentDialog({
               <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
             </FormItem>
 
-            <PersonnelPreview personnel={selectedPersonnel} />
+            {/* <PersonnelPreview personnel={selectedPersonnel} /> */}
 
             <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <DateField
@@ -622,9 +622,6 @@ function DutyAssignmentDialog({
                 <div className="flex items-center justify-between rounded-2xl border border-border px-4 py-3">
                   <div className="space-y-1">
                     <FormLabel>Extra Duty</FormLabel>
-                    <FormDescription>
-                      Extra duties always store 0 points.
-                    </FormDescription>
                   </div>
                   <Switch checked={isExtra} onCheckedChange={handleExtraChange} />
                 </div>

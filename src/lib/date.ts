@@ -44,22 +44,22 @@ export function getTodaySingaporeDayIndex(now = new Date()) {
 
 export function isActiveOnDayRange(
   startDay: number,
-  endDay: number,
+  endDay: number | undefined,
   targetDay: number,
 ) {
-  return startDay <= targetDay && targetDay <= endDay;
+  return startDay <= targetDay && (endDay === undefined || targetDay <= endDay);
 }
 
 export function getTemporalBucketForDayRange(
   startDay: number,
-  endDay: number,
+  endDay: number | undefined,
   targetDay: number,
 ) {
   if (isActiveOnDayRange(startDay, endDay, targetDay)) {
     return "active" as const;
   }
 
-  if (endDay < targetDay) {
+  if (endDay !== undefined && endDay < targetDay) {
     return "past" as const;
   }
 

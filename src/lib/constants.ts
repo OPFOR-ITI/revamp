@@ -1,5 +1,13 @@
 export const STATUS_DEFINITIONS = [
   { value: "MC", affectsParadeState: true },
+  { value: "AWOL", affectsParadeState: true },
+  { value: "DB", affectsParadeState: true },
+  { value: "OFF", affectsParadeState: true },
+  { value: "LEAVE", affectsParadeState: true },
+  { value: "RSO", affectsParadeState: true },
+  { value: "MA", affectsParadeState: true },
+  { value: "BOOK OUT", affectsParadeState: true },
+  { value: "HOSPITALISED", affectsParadeState: true },
   { value: "LD", affectsParadeState: false },
   { value: "EX RMJ", affectsParadeState: false },
   { value: "EX STAY IN", affectsParadeState: true },
@@ -7,6 +15,8 @@ export const STATUS_DEFINITIONS = [
   { value: "EX FLEGS", affectsParadeState: false },
   { value: "EX HEAVY LOAD", affectsParadeState: false },
   { value: "EX SQUATTING", affectsParadeState: false },
+  { value: "EX EXPLOSIVES & PYRO", affectsParadeState: false },
+  { value: "EX DUST", affectsParadeState: false },
   { value: "Others", affectsParadeState: false },
 ] as const;
 
@@ -47,6 +57,13 @@ export function formatStatusLabel(status: Status, customStatus?: string) {
   return normalizedCustomStatus
     ? `${OTHER_STATUS_VALUE}(${normalizedCustomStatus})`
     : OTHER_STATUS_VALUE;
+}
+
+export function isPermanentRecord(record: {
+  isPermanent?: boolean;
+  endDate?: string;
+}) {
+  return record.isPermanent ?? !record.endDate;
 }
 
 export const USER_ROLE_VALUES = ["admin", "operator"] as const;
