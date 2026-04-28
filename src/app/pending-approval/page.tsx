@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import type { AppNavGroup } from "@/components/layout/app-navigation";
 import { PendingApprovalPanel } from "@/components/auth/pending-approval-panel";
 import { AppSidebarShell } from "@/components/layout/app-sidebar-shell";
 import { getCurrentAppUserOrNull } from "@/lib/auth-guards";
@@ -15,6 +16,21 @@ export default async function PendingApprovalPage() {
     redirect("/");
   }
 
+  const navGroups: AppNavGroup[] = [
+    {
+      label: "Access",
+      items: [
+        {
+          id: "approval-status",
+          label: "Approval status",
+          href: "/pending-approval",
+          icon: "pending",
+          active: true,
+        },
+      ],
+    },
+  ];
+
   return (
     <AppSidebarShell
       viewer={{
@@ -27,14 +43,7 @@ export default async function PendingApprovalPage() {
           ? "This account has been rejected. You can still review the status and sign out."
           : "Your account exists, but an admin has not approved it for operations access yet."
       }
-      navItems={[
-        {
-          label: "Approval status",
-          href: "/pending-approval",
-          icon: "pending",
-          active: true,
-        },
-      ]}
+      navGroups={navGroups}
     >
       <PendingApprovalPanel
         name={user.name}

@@ -11,6 +11,7 @@ const statusBadgeClasses: Record<Status, string> = {
   RSO: "bg-fuchsia-100 text-fuchsia-950 ring-1 ring-fuchsia-200",
   MA: "bg-pink-100 text-pink-950 ring-1 ring-pink-200",
   "BOOK OUT": "bg-blue-100 text-blue-950 ring-1 ring-blue-200",
+  "BOOKED OUT": "bg-blue-100 text-blue-950 ring-1 ring-blue-200",
   HOSPITALISED: "bg-rose-50 text-rose-950 ring-1 ring-rose-200",
   LD: "bg-amber-100 text-amber-950 ring-1 ring-amber-200",
   "EX RMJ": "bg-slate-200 text-slate-900 ring-1 ring-slate-300",

@@ -10,11 +10,11 @@ import { z } from "zod";
 import {
   ChevronsUpDown,
   CalendarDays,
-  ClipboardList,
   Loader2,
   LogOut,
   Plus,
   RefreshCw,
+  ScrollText,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import { StatusBadge } from "@/components/parade-state/status-badge";
+import { ParadeReportModal } from "@/components/parade-state/parade-report-modal";
 import {
   type CurrentStateRow,
   type ParadeStateRecordDoc,
@@ -88,9 +89,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -138,6 +136,8 @@ import {
   personnelRecordSchema,
   type PersonnelRecord,
 } from "@/lib/personnel";
+import { getPrimaryNavGroups } from "@/components/layout/app-navigation";
+import { AppSidebarNav } from "@/components/layout/app-sidebar-nav";
 
 const addRecordSchema = z
   .object({
@@ -293,7 +293,7 @@ function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
       variant={affectsParadeState ? "default" : "outline"}
       className={affectsParadeState ? "bg-emerald-800 text-white" : ""}
     >
-      {affectsParadeState ? "Affects parade state" : "No parade-state impact"}
+      {affectsParadeState ? "Out-of-Camp" : "In-Camp"}
     </Badge>
   );
 }
@@ -311,8 +311,7 @@ function PermanentStatusField({
         <div>
           <FormLabel>Permanent status</FormLabel>
           <FormDescription>
-            Permanent statuses stay active from the start date onward and do not
-            use an end date.
+           
           </FormDescription>
         </div>
         <div className="flex items-center gap-3">
@@ -519,7 +518,7 @@ function OtherStatusFields({
           <div>
             <FormLabel>Parade-state impact</FormLabel>
             <FormDescription>
-              Choose whether this custom status affects parade state.
+              {/* Choose whether this custom status affects parade state. */}
             </FormDescription>
           </div>
           <div className="flex items-center gap-3">
@@ -1261,8 +1260,10 @@ function PersonnelRecordsSheet({
 }
 
 export function OperationsDashboard({
+  initialView,
   viewer,
 }: {
+  initialView: DashboardView;
   viewer: {
     name: string;
     email: string;
@@ -1279,6 +1280,7 @@ export function OperationsDashboard({
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isParadeReportOpen, setIsParadeReportOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<CurrentStateRow | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ParadeStateRecordDoc | null>(
     null,
@@ -1292,7 +1294,7 @@ export function OperationsDashboard({
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
   const [temporalFilter, setTemporalFilter] =
     useState<RecordTemporalFilter>("all");
-  const [activeView, setActiveView] = useState<DashboardView>("current-state");
+  const [activeView, setActiveView] = useState<DashboardView>(initialView);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   useEffect(() => {
@@ -1426,42 +1428,20 @@ export function OperationsDashboard({
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigate</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={activeView === "current-state"}
-                    tooltip="Current State"
-                    onClick={() => setActiveView("current-state")}
-                  >
-                    <ShieldCheck className="size-4" />
-                    <span>Current State</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={activeView === "record-log"}
-                    tooltip="Record Log"
-                    onClick={() => setActiveView("record-log")}
-                  >
-                    <ClipboardList className="size-4" />
-                    <span>Record Log</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="Duty Calendar"
-                    onClick={() => router.push("/duties")}
-                  >
-                    <CalendarDays className="size-4" />
-                    <span>Duty Calendar</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <AppSidebarNav
+            groups={getPrimaryNavGroups({
+              activeItem:
+                activeView === "current-state" ? "current-state" : "record-log",
+              role: viewer.role,
+            })}
+            onItemSelect={(item) => {
+              if (item.id === "current-state" || item.id === "record-log") {
+                setActiveView(
+                  item.id === "current-state" ? "current-state" : "record-log",
+                );
+              }
+            }}
+          />
         </SidebarContent>
 
         <SidebarSeparator />
@@ -1588,10 +1568,19 @@ export function OperationsDashboard({
                   </Badge>
                 </div>
               </div>
-              <Button className="shrink-0" onClick={() => setIsAddDialogOpen(true)}>
-                <Plus className="size-4" />
-                Add Parade State
-              </Button>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsParadeReportOpen(true)}
+                >
+                  <ScrollText className="size-4" />
+                  View Parade Report
+                </Button>
+                <Button onClick={() => setIsAddDialogOpen(true)}>
+                  <Plus className="size-4" />
+                  Add Parade State
+                </Button>
+              </div>
             </div>
           </header>
 
@@ -1936,6 +1925,10 @@ export function OperationsDashboard({
         personnelError={personnelError}
         personnelLoading={isPersonnelLoading}
         submittedBy={viewer.name}
+      />
+      <ParadeReportModal
+        open={isParadeReportOpen}
+        onOpenChange={setIsParadeReportOpen}
       />
       <EditRecordDialog
         open={!!selectedRecord}

@@ -7,6 +7,7 @@ export const STATUS_DEFINITIONS = [
   { value: "RSO", affectsParadeState: true },
   { value: "MA", affectsParadeState: true },
   { value: "BOOK OUT", affectsParadeState: true },
+  { value: "BOOKED OUT", affectsParadeState: true },
   { value: "HOSPITALISED", affectsParadeState: true },
   { value: "LD", affectsParadeState: false },
   { value: "EX RMJ", affectsParadeState: false },

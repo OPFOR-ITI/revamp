@@ -3,9 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  CalendarDays,
   ChevronsUpDown,
-  ClipboardList,
   Loader2,
   LogOut,
   ShieldCheck,
@@ -25,9 +23,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -39,17 +34,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import type { AppNavGroup } from "@/components/layout/app-navigation";
+import { AppSidebarNav } from "@/components/layout/app-sidebar-nav";
 import { authClient } from "@/lib/auth-client";
 import type { UserRole } from "@/lib/constants";
-
-type NavIcon = "operations" | "approvals" | "pending" | "duties";
-
-type NavItem = {
-  label: string;
-  href: string;
-  active?: boolean;
-  icon: NavIcon;
-};
 
 function getViewerInitials(name: string) {
   return name
@@ -60,25 +48,11 @@ function getViewerInitials(name: string) {
     .join("");
 }
 
-function getNavIcon(icon: NavIcon) {
-  switch (icon) {
-    case "approvals":
-      return <ShieldCheck className="size-4" />;
-    case "pending":
-      return <UserRound className="size-4" />;
-    case "duties":
-      return <CalendarDays className="size-4" />;
-    case "operations":
-    default:
-      return <ClipboardList className="size-4" />;
-  }
-}
-
 export function AppSidebarShell({
   viewer,
   title,
   description,
-  navItems,
+  navGroups,
   children,
   nominalRollCount,
 }: {
@@ -89,7 +63,7 @@ export function AppSidebarShell({
   };
   title: string;
   description?: string;
-  navItems: NavItem[];
+  navGroups: AppNavGroup[];
   children: React.ReactNode;
   nominalRollCount?: string | number;
 }) {
@@ -127,25 +101,7 @@ export function AppSidebarShell({
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Navigate</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={item.active}
-                      tooltip={item.label}
-                      onClick={() => router.push(item.href)}
-                    >
-                      {getNavIcon(item.icon)}
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <AppSidebarNav groups={navGroups} />
         </SidebarContent>
 
         <SidebarSeparator />

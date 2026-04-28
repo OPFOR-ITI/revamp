@@ -60,6 +60,7 @@ export default defineSchema({
     dutyType: v.string(),
     dutyTypeNormalized: v.string(),
     dutyPreset: v.union(
+      v.literal("CDO"),
       v.literal("DOO"),
       v.literal("CDS"),
       v.literal("COS"),

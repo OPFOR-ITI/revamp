@@ -230,6 +230,7 @@ function DutyLegend() {
   return (
     <div className="flex flex-wrap gap-2">
       {[
+        { label: "CDO", key: "CDO" as const },
         { label: "DOO", key: "DOO" as const },
         { label: "CDS", key: "CDS" as const },
         { label: "COS", key: "COS" as const },
@@ -604,7 +605,7 @@ function DutyAssignmentDialog({
               <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
             </FormItem>
 
-            {/* <PersonnelPreview personnel={selectedPersonnel} /> */}
+            <PersonnelPreview personnel={selectedPersonnel} />
 
             <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <DateField

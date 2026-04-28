@@ -1,9 +1,9 @@
-import { DutyCalendarPage } from "@/components/duties/duty-calendar-page";
 import { getPrimaryNavGroups } from "@/components/layout/app-navigation";
 import { AppSidebarShell } from "@/components/layout/app-sidebar-shell";
+import { ParadeReportBuilder } from "@/components/parade-state/parade-report-builder";
 import { requireApprovedUser } from "@/lib/auth-guards";
 
-export default async function DutiesPage() {
+export default async function ParadeReportPage() {
   const user = await requireApprovedUser();
 
   return (
@@ -13,14 +13,14 @@ export default async function DutiesPage() {
         email: user.email,
         role: user.role,
       }}
-      title="Duty Calendar"
-      description="Schedule duties by day, enforce eligibility rules, and manage point-bearing assignments in one calendar view."
+      title="Parade Report"
+      description="Generate a copy-ready company parade-state message from live personnel, status, and duty data."
       navGroups={getPrimaryNavGroups({
-        activeItem: "duty-calendar",
+        activeItem: "parade-report",
         role: user.role,
       })}
     >
-      <DutyCalendarPage />
+      <ParadeReportBuilder />
     </AppSidebarShell>
   );
 }

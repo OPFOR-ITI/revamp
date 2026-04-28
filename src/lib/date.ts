@@ -73,3 +73,22 @@ export function formatDateLabel(value: string) {
 export function formatTimestampLabel(timestamp: number) {
   return timestampFormatter.format(new Date(timestamp));
 }
+
+export function formatCompactDateLabel(value: string) {
+  return format(parseISO(value), "ddMMyy");
+}
+
+export function isValidTimeHHmm(value: string) {
+  return /^([01]\d|2[0-3])[0-5]\d$/.test(value);
+}
+
+export function getCurrentSingaporeTimeHHmm(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: SINGAPORE_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  return formatter.format(now).replace(":", "");
+}

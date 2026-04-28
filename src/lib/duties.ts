@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { assertDateString } from "@/lib/date";
 
-export const DUTY_PRESETS = ["DOO", "CDS", "COS"] as const;
+export const DUTY_PRESETS = ["CDO", "DOO", "CDS", "COS"] as const;
 export const DUTY_KIND_VALUES = [...DUTY_PRESETS, "CUSTOM"] as const;
 export const MAX_DUTY_TYPE_LENGTH = 100;
 
@@ -11,6 +11,7 @@ export type DutyPreset = (typeof DUTY_PRESETS)[number];
 export type DutyKind = (typeof DUTY_KIND_VALUES)[number];
 
 export const DUTY_COLOR_CLASSES: Record<DutyPreset | "CUSTOM", string> = {
+  CDO: "border-cyan-300 bg-cyan-50 text-cyan-950",
   DOO: "border-sky-300 bg-sky-50 text-sky-950",
   CDS: "border-amber-300 bg-amber-50 text-amber-950",
   COS: "border-emerald-300 bg-emerald-50 text-emerald-950",
@@ -78,6 +79,7 @@ export function isEligibleForDuty({
   const normalizedDesignation = normalizeComparableValue(designation);
 
   switch (dutyPreset) {
+    case "CDO":
     case "DOO":
       return normalizedDesignation === "PC";
     case "CDS":
@@ -93,6 +95,8 @@ export function isEligibleForDuty({
 
 export function getDutyEligibilityDescription(dutyPreset: DutyPreset | null) {
   switch (dutyPreset) {
+    case "CDO":
+      return "Only personnel with PC designation can be assigned.";
     case "DOO":
       return "Only personnel with PC designation can be assigned.";
     case "CDS":

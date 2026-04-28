@@ -33,13 +33,57 @@ function normalizeCompositePart(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function normalizePlatoonToken(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function resolveCanonicalPlatoon(platoon: string) {
+  const normalized = normalizePlatoonToken(platoon);
+
+  switch (normalized) {
+    case "hq":
+    case "coy hq":
+    case "company hq":
+    case "coyhq":
+    case "companyhq":
+      return "Coy HQ";
+    case "mobile":
+    case "mobile platoon":
+    case "mobile pl":
+    case "mobile plt":
+      return "Mobile Platoon";
+    case "1":
+    case "platoon 1":
+    case "plt 1":
+    case "pl 1":
+      return "Platoon 1";
+    case "2":
+    case "platoon 2":
+    case "plt 2":
+    case "pl 2":
+      return "Platoon 2";
+    case "3":
+    case "platoon 3":
+    case "plt 3":
+    case "pl 3":
+      return "Platoon 3";
+    case "shark":
+    case "shark platoon":
+    case "shark pl":
+    case "shark plt":
+      return "Shark Platoon";
+    default:
+      return platoon.trim().replace(/\s+/g, " ");
+  }
+}
+
 export function createPersonnelKey(
   rank: string,
   name: string,
   platoon: string,
   designation: string,
 ) {
-  return [rank, name, platoon, designation]
+  return [rank, name, resolveCanonicalPlatoon(platoon), designation]
     .map(normalizeCompositePart)
     .join("|");
 }
@@ -77,24 +121,35 @@ export function normalizePersonnelRows(values: string[][]) {
 
   const seenKeys = new Map<string, number>();
   const personnel: PersonnelRecord[] = [];
+  let activePlatoon = "";
 
   values.slice(1).forEach((row, rowIndex) => {
     const rank = trimCell(row[0]);
     const name = trimCell(row[1]);
-    const platoon = trimCell(row[2]);
+    const platoonCell = trimCell(row[2]);
     const designation = trimCell(row[3]);
-    const isBlank = !rank && !name && !platoon && !designation;
+    const isBlank = !rank && !name && !platoonCell && !designation;
 
     if (isBlank) {
       return;
     }
 
-    if (!rank || !name || !platoon) {
+    if (platoonCell) {
+      activePlatoon = resolveCanonicalPlatoon(platoonCell);
+    }
+
+    if (!rank && !name && activePlatoon) {
+      return;
+    }
+
+    if (!rank || !name || !activePlatoon) {
       throw new PersonnelNormalizationError(
         "PERSONNEL_ROW_INCOMPLETE",
         `Personnel row ${rowIndex + 2} is incomplete. Rank, Name, and Platoon are required.`,
       );
     }
+
+    const platoon = activePlatoon;
 
     const personnelKey = createPersonnelKey(rank, name, platoon, designation);
     const previousRow = seenKeys.get(personnelKey);

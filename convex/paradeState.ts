@@ -334,6 +334,30 @@ export const listCurrentState = query({
   },
 });
 
+export const listActiveRecordsForDate = query({
+  args: {
+    date: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, { requireApproved: true });
+
+    const targetDay = dateStringToDayIndex(args.date);
+    const permanentRecords = await ctx.db
+      .query("paradeStateRecords")
+      .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
+      .collect();
+    const datedRecords = await ctx.db
+      .query("paradeStateRecords")
+      .withIndex("by_endDay", (q) => q.gte("endDay", targetDay))
+      .collect();
+
+    return [...permanentRecords, ...datedRecords]
+      .map(withDerivedImpact)
+      .filter((record) => record.startDay <= targetDay)
+      .sort(sortRecordsDescending);
+  },
+});
+
 export const listRecordLog = query({
   args: {},
   handler: async (ctx) => {
