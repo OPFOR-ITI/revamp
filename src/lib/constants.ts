@@ -51,6 +51,54 @@ export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
   "STAY OUT",
 ];
 
+type StatusRecordPeriodMode = "standard" | "fixed-duration";
+
+type StatusRecordPeriodConfig = {
+  mode: StatusRecordPeriodMode;
+  fixedDurationDays?: number;
+  showPermanentStatusToggle: boolean;
+  showDurationDaysField: boolean;
+  showEndDateField: boolean;
+};
+
+const DEFAULT_STATUS_RECORD_PERIOD_CONFIG: StatusRecordPeriodConfig = {
+  mode: "standard",
+  showPermanentStatusToggle: true,
+  showDurationDaysField: true,
+  showEndDateField: true,
+};
+
+const STATUS_RECORD_PERIOD_CONFIGS: Partial<
+  Record<Status, StatusRecordPeriodConfig>
+> = {
+  "SEND OUT": {
+    mode: "fixed-duration",
+    fixedDurationDays: 1,
+    showPermanentStatusToggle: false,
+    showDurationDaysField: false,
+    showEndDateField: false,
+  },
+  "STAY OUT": {
+    mode: "fixed-duration",
+    fixedDurationDays: 1,
+    showPermanentStatusToggle: false,
+    showDurationDaysField: false,
+    showEndDateField: false,
+  },
+} satisfies Partial<Record<Status, StatusRecordPeriodConfig>>;
+
+export const HIDE_END_DATE_AND_PERM_STATUS_VARS_METADATA_STATUSES: readonly Status[] =
+  STATUS_VALUES.filter((status) => {
+    const config = STATUS_RECORD_PERIOD_CONFIGS[status];
+
+    return (
+      !!config &&
+      !config.showPermanentStatusToggle &&
+      !config.showDurationDaysField &&
+      !config.showEndDateField
+    );
+  });
+
 export const STATUS_AFFECTS_PARADE_STATE = Object.fromEntries(
   STATUS_DEFINITIONS.map((definition) => [
     definition.value,
@@ -82,6 +130,10 @@ export function formatStatusLabel(status: Status, customStatus?: string) {
 
 export function shouldHideRecordPeriodMetadata(status: Status) {
   return HIDE_RECORD_PERIOD_METADATA_STATUSES.includes(status);
+}
+
+export function getStatusRecordPeriodConfig(status: Status): StatusRecordPeriodConfig {
+  return STATUS_RECORD_PERIOD_CONFIGS[status] ?? DEFAULT_STATUS_RECORD_PERIOD_CONFIG;
 }
 
 export function isPermanentRecord(record: {

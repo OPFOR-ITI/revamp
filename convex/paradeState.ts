@@ -3,12 +3,14 @@ import { ConvexError, v } from "convex/values";
 import {
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
+  getStatusRecordPeriodConfig,
   doesStatusAffectParadeState,
   isOtherStatus,
   isPermanentRecord,
   type Status,
 } from "../src/lib/constants";
 import {
+  addDaysToDateString,
   dateStringToDayIndex,
   getTodaySingaporeDayIndex,
 } from "../src/lib/date";
@@ -70,14 +72,30 @@ function resolveParadeStateImpact(
 }
 
 function resolveRecordDates(
+  status: Status,
   startDate: string,
   endDate: string | undefined,
   isPermanent: boolean,
 ) {
   const startDay = dateStringToDayIndex(startDate);
+  const { fixedDurationDays } = getStatusRecordPeriodConfig(status);
+
+  if (fixedDurationDays !== undefined) {
+    const resolvedEndDate = addDaysToDateString(
+      startDate,
+      Math.max(fixedDurationDays - 1, 0),
+    );
+
+    return {
+      startDay,
+      isPermanent: false,
+      endDate: resolvedEndDate,
+      endDay: dateStringToDayIndex(resolvedEndDate),
+    };
+  }
 
   if (isPermanent) {
-    return { startDay, endDate: undefined, endDay: undefined };
+    return { startDay, isPermanent, endDate: undefined, endDay: undefined };
   }
 
   if (!endDate) {
@@ -90,7 +108,7 @@ function resolveRecordDates(
     throw new ConvexError("End date must be on or after the start date.");
   }
 
-  return { startDay, endDate, endDay };
+  return { startDay, isPermanent, endDate, endDay };
 }
 
 function sortRecordsDescending<T extends { startDay: number; createdAt: number }>(
@@ -155,7 +173,8 @@ export const createRecord = mutation({
     const { appUser, authUser } = await ensureCurrentUser(ctx, {
       requireApproved: true,
     });
-    const { startDay, endDate, endDay } = resolveRecordDates(
+    const { startDay, isPermanent, endDate, endDay } = resolveRecordDates(
+      args.status,
       args.startDate,
       args.endDate?.trim() || undefined,
       args.isPermanent,
@@ -175,7 +194,7 @@ export const createRecord = mutation({
       designation: normalizeText(args.designation),
       status: args.status,
       customStatus,
-      isPermanent: args.isPermanent,
+      isPermanent,
       affectParadeState: resolveParadeStateImpact(
         args.status,
         args.affectParadeState,
@@ -213,7 +232,8 @@ export const updateRecord = mutation({
       throw new ConvexError("The selected record no longer exists.");
     }
 
-    const { startDay, endDate, endDay } = resolveRecordDates(
+    const { startDay, isPermanent, endDate, endDay } = resolveRecordDates(
+      args.status,
       args.startDate,
       args.endDate?.trim() || undefined,
       args.isPermanent,
@@ -227,7 +247,7 @@ export const updateRecord = mutation({
     await ctx.db.patch(args.recordId, {
       status: args.status,
       customStatus,
-      isPermanent: args.isPermanent,
+      isPermanent,
       affectParadeState: resolveParadeStateImpact(
         args.status,
         args.affectParadeState,
@@ -260,6 +280,7 @@ export const adjustEndDate = mutation({
     }
 
     const { endDate, endDay } = resolveRecordDates(
+      existing.status,
       existing.startDate,
       args.endDate,
       false,

@@ -109,6 +109,7 @@ import {
   PERSONNEL_ROUTE_PATH,
   STATUS_VALUES,
   formatStatusLabel,
+  getStatusRecordPeriodConfig,
   isOtherStatus,
   isPermanentRecord,
   type Status,
@@ -132,6 +133,77 @@ import {
 import { getPrimaryNavGroups } from "@/components/layout/app-navigation";
 import { AppSidebarNav } from "@/components/layout/app-sidebar-nav";
 
+type RecordPeriodFormValues = {
+  status: Status;
+  customStatus?: string;
+  isPermanent: boolean;
+  startDate: string;
+  endDate?: string;
+};
+
+function addRecordFormIssues(
+  values: RecordPeriodFormValues,
+  ctx: z.RefinementCtx,
+) {
+  const { fixedDurationDays } = getStatusRecordPeriodConfig(values.status);
+
+  if (fixedDurationDays === undefined) {
+    if (!values.isPermanent && !values.endDate?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date is required unless the status is permanent.",
+      });
+    }
+
+    if (
+      !values.isPermanent &&
+      values.endDate?.trim() &&
+      values.endDate < values.startDate
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date must be on or after the start date.",
+      });
+    }
+  }
+
+  if (values.status === OTHER_STATUS_VALUE && !values.customStatus?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customStatus"],
+      message: "Enter the custom status for Others.",
+    });
+  }
+}
+
+function getFixedDurationEndDate(status: Status, startDate: string) {
+  const { fixedDurationDays } = getStatusRecordPeriodConfig(status);
+
+  if (fixedDurationDays === undefined || !startDate) {
+    return undefined;
+  }
+
+  return addDaysToDateString(startDate, Math.max(fixedDurationDays - 1, 0));
+}
+
+function getResolvedRecordPeriodValues(values: RecordPeriodFormValues) {
+  const fixedEndDate = getFixedDurationEndDate(values.status, values.startDate);
+
+  if (fixedEndDate) {
+    return {
+      isPermanent: false,
+      endDate: fixedEndDate,
+    };
+  }
+
+  return {
+    isPermanent: values.isPermanent,
+    endDate: values.isPermanent ? undefined : values.endDate?.trim() || undefined,
+  };
+}
+
 const addRecordSchema = z
   .object({
     personnelKey: z.string().min(1, "Select a serviceman."),
@@ -152,35 +224,7 @@ const addRecordSchema = z
       .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
       .optional(),
   })
-  .superRefine((values, ctx) => {
-    if (!values.isPermanent && !values.endDate?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["endDate"],
-        message: "End date is required unless the status is permanent.",
-      });
-    }
-
-    if (
-      !values.isPermanent &&
-      values.endDate?.trim() &&
-      values.endDate < values.startDate
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["endDate"],
-        message: "End date must be on or after the start date.",
-      });
-    }
-
-    if (values.status === OTHER_STATUS_VALUE && !values.customStatus?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customStatus"],
-        message: "Enter the custom status for Others.",
-      });
-    }
-  });
+  .superRefine(addRecordFormIssues);
 
 const editRecordSchema = z
   .object({
@@ -201,35 +245,7 @@ const editRecordSchema = z
       .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
       .optional(),
   })
-  .superRefine((values, ctx) => {
-    if (!values.isPermanent && !values.endDate?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["endDate"],
-        message: "End date is required unless the status is permanent.",
-      });
-    }
-
-    if (
-      !values.isPermanent &&
-      values.endDate?.trim() &&
-      values.endDate < values.startDate
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["endDate"],
-        message: "End date must be on or after the start date.",
-      });
-    }
-
-    if (values.status === OTHER_STATUS_VALUE && !values.customStatus?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["customStatus"],
-        message: "Enter the custom status for Others.",
-      });
-    }
-  });
+  .superRefine(addRecordFormIssues);
 
 const adjustEndDateSchema = z.object({
   endDate: z.string().min(1, "End date is required."),
@@ -573,6 +589,8 @@ function AddRecordDialog({
     control: form.control,
     name: "endDate",
   });
+  const selectedStatusRecordPeriodConfig = getStatusRecordPeriodConfig(selectedStatus);
+  const fixedDurationDays = selectedStatusRecordPeriodConfig.fixedDurationDays;
   const selectedPersonnel = personnel.find(
     (person) => person.personnelKey === selectedPersonnelKey,
   );
@@ -600,6 +618,23 @@ function AddRecordDialog({
     });
   }, [form, selectedStatus]);
 
+  useEffect(() => {
+    const fixedEndDate = getFixedDurationEndDate(selectedStatus, startDate);
+
+    if (!fixedEndDate) {
+      return;
+    }
+
+    form.setValue("isPermanent", false, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+    form.setValue("endDate", fixedEndDate, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+  }, [form, selectedStatus, startDate]);
+
   const dayOffsetInput = isPermanent
     ? ""
     : getDaysOffsetInputValue(startDate, endDate);
@@ -609,6 +644,16 @@ function AddRecordDialog({
       shouldDirty: true,
       shouldValidate: true,
     });
+
+    const fixedEndDate = getFixedDurationEndDate(selectedStatus, nextValue);
+
+    if (fixedEndDate) {
+      form.setValue("endDate", fixedEndDate, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
 
     if (!dayOffsetInput) {
       return;
@@ -654,6 +699,8 @@ function AddRecordDialog({
     setIsSubmitting(true);
 
     try {
+      const resolvedPeriod = getResolvedRecordPeriodValues(values);
+
       await createRecord({
         personnelKey: selectedPersonnel.personnelKey,
         rank: selectedPersonnel.rank,
@@ -667,9 +714,9 @@ function AddRecordDialog({
         affectParadeState: isOtherStatus(values.status)
           ? values.affectParadeState
           : undefined,
-        isPermanent: values.isPermanent,
+        isPermanent: resolvedPeriod.isPermanent,
         startDate: values.startDate,
-        endDate: values.isPermanent ? undefined : values.endDate?.trim() || undefined,
+        endDate: resolvedPeriod.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
       });
 
@@ -720,7 +767,13 @@ function AddRecordDialog({
 
             <PersonnelPreview personnel={selectedPersonnel} submittedBy={submittedBy} />
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div
+              className={
+                selectedStatusRecordPeriodConfig.showPermanentStatusToggle
+                  ? "grid gap-5 sm:grid-cols-2"
+                  : "grid gap-5"
+              }
+            >
               <FormItem>
                 <FormLabel>Status</FormLabel>
                 <Select
@@ -746,15 +799,17 @@ function AddRecordDialog({
                 <FormMessage>{form.formState.errors.status?.message}</FormMessage>
               </FormItem>
 
-              <PermanentStatusField
-                checked={!!isPermanent}
-                onCheckedChange={(value) =>
-                  form.setValue("isPermanent", value, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-              />
+              {selectedStatusRecordPeriodConfig.showPermanentStatusToggle ? (
+                <PermanentStatusField
+                  checked={!!isPermanent}
+                  onCheckedChange={(value) =>
+                    form.setValue("isPermanent", value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              ) : null}
             </div>
 
             {isOtherStatus(selectedStatus) ? (
@@ -777,8 +832,22 @@ function AddRecordDialog({
               />
             ) : null}
 
-            <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start">
-              {isPermanent ? (
+            <div
+              className={
+                fixedDurationDays === undefined
+                  ? "grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start"
+                  : "grid gap-5"
+              }
+            >
+              {fixedDurationDays !== undefined ? (
+                <DateStepperField
+                  id="add-start-date"
+                  label="Start date"
+                  value={startDate}
+                  onChange={handleStartDateChange}
+                  error={form.formState.errors.startDate?.message}
+                />
+              ) : isPermanent ? (
                 <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
                   No start or end date. Permanent statuses become active
                   immediately and stay active until you edit the record later.
@@ -899,6 +968,8 @@ function EditRecordDialog({
     control: form.control,
     name: "endDate",
   });
+  const selectedStatusRecordPeriodConfig = getStatusRecordPeriodConfig(selectedStatus);
+  const fixedDurationDays = selectedStatusRecordPeriodConfig.fixedDurationDays;
 
   useEffect(() => {
     if (!record) {
@@ -931,6 +1002,23 @@ function EditRecordDialog({
     });
   }, [form, selectedStatus]);
 
+  useEffect(() => {
+    const fixedEndDate = getFixedDurationEndDate(selectedStatus, startDate);
+
+    if (!fixedEndDate) {
+      return;
+    }
+
+    form.setValue("isPermanent", false, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+    form.setValue("endDate", fixedEndDate, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+  }, [form, selectedStatus, startDate]);
+
   const dayOffsetInput = isPermanent
     ? ""
     : getDaysOffsetInputValue(startDate, endDate);
@@ -940,6 +1028,16 @@ function EditRecordDialog({
       shouldDirty: true,
       shouldValidate: true,
     });
+
+    const fixedEndDate = getFixedDurationEndDate(selectedStatus, nextValue);
+
+    if (fixedEndDate) {
+      form.setValue("endDate", fixedEndDate, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
 
     if (!dayOffsetInput) {
       return;
@@ -982,6 +1080,8 @@ function EditRecordDialog({
     setIsSubmitting(true);
 
     try {
+      const resolvedPeriod = getResolvedRecordPeriodValues(values);
+
       await updateRecord({
         recordId: record._id,
         status: values.status,
@@ -991,9 +1091,9 @@ function EditRecordDialog({
         affectParadeState: isOtherStatus(values.status)
           ? values.affectParadeState
           : undefined,
-        isPermanent: values.isPermanent,
+        isPermanent: resolvedPeriod.isPermanent,
         startDate: values.startDate,
-        endDate: values.isPermanent ? undefined : values.endDate?.trim() || undefined,
+        endDate: resolvedPeriod.endDate,
         remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
       });
 
@@ -1033,7 +1133,13 @@ function EditRecordDialog({
             <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
               <PersonnelPreview personnel={previewPersonnel} />
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div
+                className={
+                  selectedStatusRecordPeriodConfig.showPermanentStatusToggle
+                    ? "grid gap-5 sm:grid-cols-2"
+                    : "grid gap-5"
+                }
+              >
                 <FormItem>
                   <FormLabel>Status</FormLabel>
                   <Select
@@ -1059,15 +1165,17 @@ function EditRecordDialog({
                   <FormMessage>{form.formState.errors.status?.message}</FormMessage>
                 </FormItem>
 
-                <PermanentStatusField
-                  checked={!!isPermanent}
-                  onCheckedChange={(value) =>
-                    form.setValue("isPermanent", value, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                />
+                {selectedStatusRecordPeriodConfig.showPermanentStatusToggle ? (
+                  <PermanentStatusField
+                    checked={!!isPermanent}
+                    onCheckedChange={(value) =>
+                      form.setValue("isPermanent", value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  />
+                ) : null}
               </div>
 
               {isOtherStatus(selectedStatus) ? (
@@ -1090,8 +1198,22 @@ function EditRecordDialog({
                 />
               ) : null}
 
-              <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start">
-                {isPermanent ? (
+              <div
+                className={
+                  fixedDurationDays === undefined
+                    ? "grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start"
+                    : "grid gap-5"
+                }
+              >
+                {fixedDurationDays !== undefined ? (
+                  <DateStepperField
+                    id="edit-start-date"
+                    label="Start date"
+                    value={startDate}
+                    onChange={handleStartDateChange}
+                    error={form.formState.errors.startDate?.message}
+                  />
+                ) : isPermanent ? (
                   <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
                     No start or end date. Turn off permanent status if you need
                     this record to use a dated range.
