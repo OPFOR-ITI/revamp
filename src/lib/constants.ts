@@ -55,9 +55,11 @@ export function formatStatusLabel(status: Status, customStatus?: string) {
 
   const normalizedCustomStatus = customStatus?.trim();
 
-  return normalizedCustomStatus
-    ? `${OTHER_STATUS_VALUE}(${normalizedCustomStatus})`
-    : OTHER_STATUS_VALUE;
+  return normalizedCustomStatus || OTHER_STATUS_VALUE;
+
+  // return normalizedCustomStatus
+  //   ? `${OTHER_STATUS_VALUE}(${normalizedCustomStatus})`
+  //   : OTHER_STATUS_VALUE;
 }
 
 export function isPermanentRecord(record: {

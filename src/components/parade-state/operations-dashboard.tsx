@@ -466,12 +466,12 @@ function OtherStatusFields({
             id="custom-status"
             value={customStatus}
             maxLength={MAX_CUSTOM_STATUS_LENGTH}
-            placeholder="Type the status to show after Others"
+            placeholder="Type the status to display"
             onChange={(event) => onCustomStatusChange(event.target.value)}
           />
         </FormControl>
         <FormDescription>
-          Displays as {OTHER_STATUS_VALUE}(typed status).
+          Displays as the typed status in parade state.
         </FormDescription>
         <FormMessage>{customStatusError}</FormMessage>
       </FormItem>
