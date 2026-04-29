@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
-import { format, parseISO } from "date-fns";
 import {
   ClipboardCopy,
   Loader2,
@@ -16,8 +15,7 @@ import { api } from "../../../convex/_generated/api";
 import type { DutyAssignmentDoc } from "@/components/duties/types";
 import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -25,13 +23,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FormDescription, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DateStepperField } from "@/components/ui/date-stepper-field";
+import { FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PERSONNEL_ROUTE_PATH } from "@/lib/constants";
 import {
@@ -45,13 +39,8 @@ import {
   formatParadeReportText,
 } from "@/lib/parade-report";
 import { personnelRecordSchema, type PersonnelRecord } from "@/lib/personnel";
-import { cn } from "@/lib/utils";
 
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
-
-function dateToString(value: Date) {
-  return format(value, "yyyy-MM-dd");
-}
 
 function ReportDateField({
   value,
@@ -60,33 +49,12 @@ function ReportDateField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const selectedDate = parseISO(value);
-
   return (
-    <FormItem>
-      <FormLabel>Parade Date</FormLabel>
-      <Popover>
-        <PopoverTrigger
-          className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-10 w-full justify-between px-3 text-left font-normal",
-          )}
-        >
-          <span>{formatDateLabel(value)}</span>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={selectedDate}
-            onSelect={(nextDate) => {
-              if (nextDate) {
-                onChange(dateToString(nextDate));
-              }
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-    </FormItem>
+    <DateStepperField
+      label="Parade Date"
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 
@@ -316,13 +284,13 @@ export function ParadeReportBuilder({
               <FormMessage>{timeError}</FormMessage>
             </FormItem>
 
-            <div className="flex items-end gap-2">
+            <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 md:flex">
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleRefresh}
                 disabled={isPersonnelLoading}
-                className="flex-1 h-10"
+                className="h-10 w-full md:flex-1"
               >
                 {isPersonnelLoading ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -335,7 +303,7 @@ export function ParadeReportBuilder({
                 type="button"
                 onClick={() => void handleCopy("Parade report copied again.")}
                 disabled={!reportState.text || isCopying}
-                className="flex-1 h-10"
+                className="h-10 w-full md:flex-1"
               >
                 {isCopying ? (
                   <Loader2 className="size-4 animate-spin" />

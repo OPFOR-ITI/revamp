@@ -62,7 +62,7 @@ export function PendingUsersTable() {
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
-          <CardHeader className="flex-row items-start justify-between gap-4">
+          <CardHeader className="flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardDescription>Pending queue</CardDescription>
               <CardTitle className="mt-2 text-3xl">
@@ -79,7 +79,7 @@ export function PendingUsersTable() {
         </Card>
 
         <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
-          <CardHeader className="flex-row items-start justify-between gap-4">
+          <CardHeader className="flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardDescription>Approval scope</CardDescription>
               <CardTitle className="mt-2 text-3xl">Operators only</CardTitle>
@@ -109,56 +109,102 @@ export function PendingUsersTable() {
               <Skeleton className="h-12 w-full rounded-xl" />
             </div>
           ) : pendingUsers.length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingUsers.map((user) => {
-                  const isBusy = activeRowId === user._id;
+            <div className="space-y-3">
+              {pendingUsers.map((user) => {
+                const isBusy = activeRowId === user._id;
 
-                  return (
-                    <TableRow key={user._id}>
-                      <TableCell className="font-medium text-zinc-950">
-                        {user.name}
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{formatTimestampLabel(user.createdAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleAction(user._id, "approve")}
-                            disabled={isBusy}
-                          >
-                            {isBusy && activeAction === "approve" ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : null}
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAction(user._id, "reject")}
-                            disabled={isBusy}
-                          >
-                            {isBusy && activeAction === "reject" ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : null}
-                            Reject
-                          </Button>
-                        </div>
-                      </TableCell>
+                return (
+                  <div
+                    key={`${user._id}-mobile`}
+                    className="rounded-2xl border border-border bg-background/90 p-4 md:hidden"
+                  >
+                    <p className="font-medium text-zinc-950">{user.name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Created {formatTimestampLabel(user.createdAt)}
+                    </p>
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleAction(user._id, "approve")}
+                        disabled={isBusy}
+                        className="w-full"
+                      >
+                        {isBusy && activeAction === "approve" ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : null}
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAction(user._id, "reject")}
+                        disabled={isBusy}
+                        className="w-full"
+                      >
+                        {isBusy && activeAction === "reject" ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : null}
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingUsers.map((user) => {
+                      const isBusy = activeRowId === user._id;
+
+                      return (
+                        <TableRow key={user._id}>
+                          <TableCell className="font-medium text-zinc-950">
+                            {user.name}
+                          </TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>{formatTimestampLabel(user.createdAt)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleAction(user._id, "approve")}
+                                disabled={isBusy}
+                              >
+                                {isBusy && activeAction === "approve" ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : null}
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleAction(user._id, "reject")}
+                                disabled={isBusy}
+                              >
+                                {isBusy && activeAction === "reject" ? (
+                                  <Loader2 className="size-4 animate-spin" />
+                                ) : null}
+                                Reject
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               No pending users right now.

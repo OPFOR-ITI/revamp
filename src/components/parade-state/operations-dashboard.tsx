@@ -4,12 +4,10 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format, parseISO } from "date-fns";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
   ChevronsUpDown,
-  CalendarDays,
   Loader2,
   LogOut,
   Plus,
@@ -30,7 +28,6 @@ import {
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -65,11 +62,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -109,6 +101,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { DateStepperField } from "@/components/ui/date-stepper-field";
 import {
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
@@ -122,7 +115,8 @@ import {
   type UserRole,
 } from "@/lib/constants";
 import {
-  dateStringToDayIndex,
+  addDaysToDateString,
+  getDayOffsetBetweenDates,
   formatDateLabel,
   formatTimestampLabel,
   getTemporalBucketForDayRange,
@@ -130,7 +124,6 @@ import {
   getTodaySingaporeDayIndex,
 } from "@/lib/date";
 import { authClient } from "@/lib/auth-client";
-import { cn } from "@/lib/utils";
 import {
   formatDesignation,
   personnelRecordSchema,
@@ -334,67 +327,37 @@ function getViewerInitials(name: string) {
     .join("");
 }
 
-function dateStringToDate(value: string) {
-  return parseISO(value);
+function getDaysOffsetInputValue(startDate: string, endDate?: string) {
+  if (!startDate || !endDate) {
+    return "";
+  }
+
+  const inclusiveDuration = getDayOffsetBetweenDates(startDate, endDate) + 1;
+  return inclusiveDuration > 0 ? String(inclusiveDuration) : "";
 }
 
-function dateToString(value: Date) {
-  return format(value, "yyyy-MM-dd");
-}
-
-function DateField({
+function StatusDaysField({
   id,
-  label,
   value,
   onChange,
-  error,
-  minDate,
-  description,
 }: {
   id: string;
-  label: string;
   value: string;
   onChange: (value: string) => void;
-  error?: string;
-  minDate?: string;
-  description?: string;
 }) {
-  const selectedDate = value ? dateStringToDate(value) : undefined;
-
   return (
     <FormItem>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <Popover>
-        <PopoverTrigger
-          id={id}
-          className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-10 w-full justify-between px-3 text-left font-normal",
-            !value && "text-muted-foreground",
-          )}
-        >
-          <span>{value ? formatDateLabel(value) : "Select date"}</span>
-          <CalendarDays className="size-4 text-muted-foreground" />
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={selectedDate}
-            onSelect={(nextDate) => {
-              if (nextDate) {
-                onChange(dateToString(nextDate));
-              }
-            }}
-            disabled={
-              minDate
-                ? (date) => dateStringToDayIndex(dateToString(date)) < dateStringToDayIndex(minDate)
-                : undefined
-            }
-          />
-        </PopoverContent>
-      </Popover>
-      {description ? <FormDescription>{description}</FormDescription> : null}
-      <FormMessage>{error}</FormMessage>
+      <FormLabel htmlFor={id}>Days</FormLabel>
+      <Input
+        id={id}
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={4}
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))}
+        placeholder="0"
+        className="h-10"
+      />
     </FormItem>
   );
 }
@@ -610,6 +573,49 @@ function AddRecordDialog({
     });
   }, [form, selectedStatus]);
 
+  const dayOffsetInput = isPermanent
+    ? ""
+    : getDaysOffsetInputValue(startDate, endDate);
+
+  function handleStartDateChange(nextValue: string) {
+    form.setValue("startDate", nextValue, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    if (!dayOffsetInput) {
+      return;
+    }
+
+    const durationDays = Number(dayOffsetInput);
+    form.setValue(
+      "endDate",
+      addDaysToDateString(nextValue, Math.max(durationDays - 1, 0)),
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
+  }
+
+  function handleEndDateChange(nextValue: string) {
+    form.setValue("endDate", nextValue, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function handleDayOffsetChange(nextValue: string) {
+    form.setValue(
+      "endDate",
+      nextValue ? addDaysToDateString(startDate, Math.max(Number(nextValue) - 1, 0)) : "",
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
+  }
+
   async function onSubmit(values: AddRecordValues) {
     if (!selectedPersonnel) {
       form.setError("personnelKey", {
@@ -652,12 +658,11 @@ function AddRecordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Add Parade State</DialogTitle>
+          <DialogTitle>Add Personnel Status</DialogTitle>
           <DialogDescription>
-            Create a new parade-state record using a serviceman selected from the
-            live Google Sheets personnel list.
+            Create a new perssonel status record
           </DialogDescription>
         </DialogHeader>
 
@@ -745,37 +750,33 @@ function AddRecordDialog({
               />
             ) : null}
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start">
               {isPermanent ? (
-                <div className="sm:col-span-2 flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
                   No start or end date. Permanent statuses become active
                   immediately and stay active until you edit the record later.
                 </div>
               ) : (
                 <>
-                  <DateField
+                  <DateStepperField
                     id="add-start-date"
                     label="Start date"
                     value={startDate}
-                    onChange={(nextValue) =>
-                      form.setValue("startDate", nextValue, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
+                    onChange={handleStartDateChange}
                     error={form.formState.errors.startDate?.message}
                   />
 
-                  <DateField
+                  <StatusDaysField
+                    id="add-duration-days"
+                    value={dayOffsetInput}
+                    onChange={handleDayOffsetChange}
+                  />
+
+                  <DateStepperField
                     id="add-end-date"
                     label="End date"
                     value={endDate ?? ""}
-                    onChange={(nextValue) =>
-                      form.setValue("endDate", nextValue, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
+                    onChange={handleEndDateChange}
                     minDate={startDate}
                     error={form.formState.errors.endDate?.message}
                   />
@@ -804,12 +805,14 @@ function AddRecordDialog({
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
               <Button
                 type="submit"
                 disabled={pickerDisabled || isSubmitting}
+                className="w-full sm:w-auto"
               >
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
                 Save record
@@ -901,6 +904,49 @@ function EditRecordDialog({
     });
   }, [form, selectedStatus]);
 
+  const dayOffsetInput = isPermanent
+    ? ""
+    : getDaysOffsetInputValue(startDate, endDate);
+
+  function handleStartDateChange(nextValue: string) {
+    form.setValue("startDate", nextValue, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+
+    if (!dayOffsetInput) {
+      return;
+    }
+
+    const durationDays = Number(dayOffsetInput);
+    form.setValue(
+      "endDate",
+      addDaysToDateString(nextValue, Math.max(durationDays - 1, 0)),
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
+  }
+
+  function handleEndDateChange(nextValue: string) {
+    form.setValue("endDate", nextValue, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function handleDayOffsetChange(nextValue: string) {
+    form.setValue(
+      "endDate",
+      nextValue ? addDaysToDateString(startDate, Math.max(Number(nextValue) - 1, 0)) : "",
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
+  }
+
   async function onSubmit(values: EditRecordValues) {
     if (!record) {
       return;
@@ -946,7 +992,7 @@ function EditRecordDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit Record</DialogTitle>
           <DialogDescription>
@@ -1017,37 +1063,33 @@ function EditRecordDialog({
                 />
               ) : null}
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start">
                 {isPermanent ? (
-                  <div className="sm:col-span-2 flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                  <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
                     No start or end date. Turn off permanent status if you need
                     this record to use a dated range.
                   </div>
                 ) : (
                   <>
-                    <DateField
+                    <DateStepperField
                       id="edit-start-date"
                       label="Start date"
                       value={startDate}
-                      onChange={(nextValue) =>
-                        form.setValue("startDate", nextValue, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        })
-                      }
+                      onChange={handleStartDateChange}
                       error={form.formState.errors.startDate?.message}
                     />
 
-                    <DateField
+                    <StatusDaysField
+                      id="edit-duration-days"
+                      value={dayOffsetInput}
+                      onChange={handleDayOffsetChange}
+                    />
+
+                    <DateStepperField
                       id="edit-end-date"
                       label="End date"
                       value={endDate ?? ""}
-                      onChange={(nextValue) =>
-                        form.setValue("endDate", nextValue, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        })
-                      }
+                      onChange={handleEndDateChange}
                       minDate={startDate}
                       error={form.formState.errors.endDate?.message}
                     />
@@ -1072,10 +1114,11 @@ function EditRecordDialog({
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
                   {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
                   Save changes
                 </Button>
@@ -1121,6 +1164,35 @@ function AdjustEndDateDialog({
     });
   }, [form, record]);
 
+  const dayOffsetInput =
+    record && !isPermanentRecord(record)
+      ? getDaysOffsetInputValue(record.startDate, endDate)
+      : "";
+
+  function handleEndDateChange(nextValue: string) {
+    form.setValue("endDate", nextValue, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function handleDayOffsetChange(nextValue: string) {
+    if (!record || isPermanentRecord(record)) {
+      return;
+    }
+
+    form.setValue(
+      "endDate",
+      nextValue
+        ? addDaysToDateString(record.startDate, Math.max(Number(nextValue) - 1, 0))
+        : "",
+      {
+        shouldDirty: true,
+        shouldValidate: true,
+      },
+    );
+  }
+
   async function onSubmit(values: AdjustEndDateValues) {
     if (!record) {
       return;
@@ -1146,7 +1218,7 @@ function AdjustEndDateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adjust End Date</DialogTitle>
           <DialogDescription>
@@ -1172,20 +1244,23 @@ function AdjustEndDateDialog({
                   turn off permanent status first.
                 </div>
               ) : (
-                <DateField
-                  id="adjust-end-date"
-                  label="New end date"
-                  value={endDate}
-                  onChange={(nextValue) =>
-                    form.setValue("endDate", nextValue, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                  minDate={record.startDate}
-                  description="Dates are inclusive, so closing today keeps the record active for today."
-                  error={form.formState.errors.endDate?.message}
-                />
+                <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] sm:items-start">
+                  <DateStepperField
+                    id="adjust-end-date"
+                    label="New end date"
+                    value={endDate}
+                    onChange={handleEndDateChange}
+                    minDate={record.startDate}
+                    description="Dates are inclusive, so closing today keeps the record active for today."
+                    error={form.formState.errors.endDate?.message}
+                  />
+
+                  <StatusDaysField
+                    id="adjust-duration-days"
+                    value={dayOffsetInput}
+                    onChange={handleDayOffsetChange}
+                  />
+                </div>
               )}
 
               <DialogFooter className="gap-2">
@@ -1193,12 +1268,14 @@ function AdjustEndDateDialog({
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={isSubmitting || isPermanentRecord(record)}
+                  className="w-full sm:w-auto"
                 >
                   {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
                   Update end date
@@ -1228,7 +1305,7 @@ function PersonnelRecordsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-xl">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader className="border-b border-border">
           <SheetTitle>
             {selectedRow ? `${selectedRow.rank} ${selectedRow.name}` : "Records"}
@@ -1256,6 +1333,141 @@ function PersonnelRecordsSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function RecordActionsMenu({
+  record,
+  onEdit,
+  onAdjustEndDate,
+}: {
+  record: ParadeStateRecordDoc;
+  onEdit: () => void;
+  onAdjustEndDate: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={buttonVariants({
+          variant: "outline",
+          size: "sm",
+        })}
+      >
+        Manage
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
+        {!isPermanentRecord(record) ? (
+          <DropdownMenuItem onClick={onAdjustEndDate}>
+            Adjust end date
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function CurrentStateMobileCard({
+  row,
+  onViewRecords,
+}: {
+  row: CurrentStateRow;
+  onViewRecords: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-background/90 p-4 md:hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-zinc-950">
+            {row.rank} {row.name}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {row.platoon} / {formatDesignation(row.designation)}
+          </p>
+        </div>
+        <Badge
+          variant={row.hasParadeStateImpact ? "default" : "outline"}
+          className={row.hasParadeStateImpact ? "bg-emerald-800 text-white" : ""}
+        >
+          {row.hasParadeStateImpact ? "Impact" : "No impact"}
+        </Badge>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {row.activeStatuses.map((status) => (
+          <StatusBadge
+            key={`${row.personnelKey}-${status.status}-${status.customStatus ?? ""}`}
+            status={status.status}
+            customStatus={status.customStatus}
+          />
+        ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+        <span>
+          {row.activeRecordCount} active record{row.activeRecordCount === 1 ? "" : "s"}
+        </span>
+        <Button variant="outline" size="sm" onClick={onViewRecords}>
+          View records
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RecordLogMobileCard({
+  record,
+  onEdit,
+  onAdjustEndDate,
+}: {
+  record: ParadeStateRecordDoc;
+  onEdit: () => void;
+  onAdjustEndDate: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-background/90 p-4 md:hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-zinc-950">
+            {record.rank} {record.name}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {record.platoon} / {formatDesignation(record.designation)}
+          </p>
+        </div>
+        <RecordActionsMenu
+          record={record}
+          onEdit={onEdit}
+          onAdjustEndDate={onAdjustEndDate}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <StatusBadge
+          status={record.status}
+          customStatus={record.customStatus}
+        />
+        {isPermanentRecord(record) ? <Badge variant="outline">Permanent</Badge> : null}
+        <Badge variant="outline">{getRecordTemporalBucket(record)}</Badge>
+        <Badge
+          variant={record.affectParadeState ? "default" : "outline"}
+          className={record.affectParadeState ? "bg-emerald-800 text-white" : ""}
+        >
+          {record.affectParadeState ? "Impact" : "No impact"}
+        </Badge>
+      </div>
+
+      <div className="mt-4 space-y-3 text-sm">
+        <div>
+          <p className="font-medium text-zinc-950">{formatRecordPeriod(record)}</p>
+          <p className="text-muted-foreground">{formatRemarks(record.remarks)}</p>
+        </div>
+        <div className="text-muted-foreground">
+          <p>Submitted by {record.submittedByName}</p>
+          <p>{formatTimestampLabel(record.createdAt)}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1550,33 +1762,36 @@ export function OperationsDashboard({
       <SidebarInset className="bg-transparent">
         <div className="flex min-h-svh flex-col">
           <header className="sticky top-0 z-20 border-b border-emerald-950/10 bg-background/80 backdrop-blur">
-            <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
-              <SidebarTrigger className="shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                  Revamp operations board
-                </p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <h1 className="text-lg font-semibold tracking-tight text-zinc-950">
-                    {activeViewTitle}
-                  </h1>
-                  <Badge
-                    variant="outline"
-                    className="border-emerald-950/10 bg-white/70 text-zinc-700"
-                  >
-                    {viewer.name}
-                  </Badge>
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-6">
+              <div className="flex items-start gap-3 sm:min-w-0 sm:flex-1 sm:items-center">
+                <SidebarTrigger className="shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                    Revamp operations board
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <h1 className="text-lg font-semibold tracking-tight text-zinc-950">
+                      {activeViewTitle}
+                    </h1>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-950/10 bg-white/70 text-zinc-700"
+                    >
+                      {viewer.name}
+                    </Badge>
+                  </div>
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="grid shrink-0 grid-cols-1 gap-2 sm:flex">
                 <Button
                   variant="outline"
                   onClick={() => setIsParadeReportOpen(true)}
+                  className="w-full sm:w-auto"
                 >
                   <ScrollText className="size-4" />
                   View Parade Report
                 </Button>
-                <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
                   <Plus className="size-4" />
                   Add Parade State
                 </Button>
@@ -1620,74 +1835,84 @@ export function OperationsDashboard({
                       <Skeleton className="h-12 w-full rounded-xl" />
                     </div>
                   ) : currentState.length ? (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Serviceman</TableHead>
-                            <TableHead>Platoon</TableHead>
-                            <TableHead>Designation</TableHead>
-                            <TableHead>Active statuses</TableHead>
-                            <TableHead>Impact</TableHead>
-                            <TableHead>Record count</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {currentState.map((row) => (
-                            <TableRow key={row.personnelKey}>
-                              <TableCell>
-                                <div className="min-w-44">
-                                  <p className="font-medium text-zinc-950">
-                                    {row.rank} {row.name}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {row.records.length} active record
-                                    {row.records.length === 1 ? "" : "s"}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell>{row.platoon}</TableCell>
-                              <TableCell>{formatDesignation(row.designation)}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-2">
-                                  {row.activeStatuses.map((status) => (
-                                    <StatusBadge
-                                      key={`${row.personnelKey}-${status.status}-${status.customStatus ?? ""}`}
-                                      status={status.status}
-                                      customStatus={status.customStatus}
-                                    />
-                                  ))}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={row.hasParadeStateImpact ? "default" : "outline"}
-                                  className={
-                                    row.hasParadeStateImpact
-                                      ? "bg-emerald-800 text-white"
-                                      : ""
-                                  }
-                                >
-                                  {row.hasParadeStateImpact
-                                    ? "Impacts parade state"
-                                    : "No impact"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>{row.activeRecordCount}</TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setSelectedRow(row)}
-                                >
-                                  View records
-                                </Button>
-                              </TableCell>
+                    <div className="space-y-3">
+                      {currentState.map((row) => (
+                        <CurrentStateMobileCard
+                          key={`${row.personnelKey}-mobile`}
+                          row={row}
+                          onViewRecords={() => setSelectedRow(row)}
+                        />
+                      ))}
+
+                      <div className="hidden overflow-x-auto md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Serviceman</TableHead>
+                              <TableHead>Platoon</TableHead>
+                              <TableHead>Designation</TableHead>
+                              <TableHead>Active statuses</TableHead>
+                              <TableHead>Impact</TableHead>
+                              <TableHead>Record count</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {currentState.map((row) => (
+                              <TableRow key={row.personnelKey}>
+                                <TableCell>
+                                  <div className="min-w-44">
+                                    <p className="font-medium text-zinc-950">
+                                      {row.rank} {row.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {row.records.length} active record
+                                      {row.records.length === 1 ? "" : "s"}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{row.platoon}</TableCell>
+                                <TableCell>{formatDesignation(row.designation)}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-2">
+                                    {row.activeStatuses.map((status) => (
+                                      <StatusBadge
+                                        key={`${row.personnelKey}-${status.status}-${status.customStatus ?? ""}`}
+                                        status={status.status}
+                                        customStatus={status.customStatus}
+                                      />
+                                    ))}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={row.hasParadeStateImpact ? "default" : "outline"}
+                                    className={
+                                      row.hasParadeStateImpact
+                                        ? "bg-emerald-800 text-white"
+                                        : ""
+                                    }
+                                  >
+                                    {row.hasParadeStateImpact
+                                      ? "Impacts parade state"
+                                      : "No impact"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{row.activeRecordCount}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setSelectedRow(row)}
+                                  >
+                                    View records
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -1806,105 +2031,99 @@ export function OperationsDashboard({
                       <Skeleton className="h-12 w-full rounded-xl" />
                     </div>
                   ) : filteredRecords.length ? (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Serviceman</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Period</TableHead>
-                            <TableHead>Impact</TableHead>
-                            <TableHead>Submitted by</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredRecords.map((record) => (
-                            <TableRow key={record._id}>
-                              <TableCell>
-                                <div className="min-w-52">
-                                  <p className="font-medium text-zinc-950">
-                                    {record.rank} {record.name}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {record.platoon} / {formatDesignation(record.designation)}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-2">
-                                  <StatusBadge
-                                    status={record.status}
-                                    customStatus={record.customStatus}
-                                  />
-                                  {isPermanentRecord(record) ? (
-                                    <Badge variant="outline">Permanent</Badge>
-                                  ) : null}
-                                  <Badge variant="outline">
-                                    {getRecordTemporalBucket(record)}
-                                  </Badge>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="min-w-44">
-                                  <p>{formatRecordPeriod(record)}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {formatRemarks(record.remarks)}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={record.affectParadeState ? "default" : "outline"}
-                                  className={
-                                    record.affectParadeState
-                                      ? "bg-emerald-800 text-white"
-                                      : ""
-                                  }
-                                >
-                                  {record.affectParadeState ? "Impact" : "No impact"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="min-w-44">
-                                  <p className="font-medium text-zinc-950">
-                                    {record.submittedByName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {formatTimestampLabel(record.createdAt)}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger
-                                    className={buttonVariants({
-                                      variant: "outline",
-                                      size: "sm",
-                                    })}
-                                  >
-                                    Manage
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={() => setSelectedRecord(record)}
-                                    >
-                                      Edit
-                                    </DropdownMenuItem>
-                                    {!isPermanentRecord(record) ? (
-                                      <DropdownMenuItem
-                                        onClick={() => setRecordForEndDateAdjust(record)}
-                                      >
-                                        Adjust end date
-                                      </DropdownMenuItem>
-                                    ) : null}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
+                    <div className="space-y-3">
+                      {filteredRecords.map((record) => (
+                        <RecordLogMobileCard
+                          key={`${record._id}-mobile`}
+                          record={record}
+                          onEdit={() => setSelectedRecord(record)}
+                          onAdjustEndDate={() => setRecordForEndDateAdjust(record)}
+                        />
+                      ))}
+
+                      <div className="hidden overflow-x-auto md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Serviceman</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Period</TableHead>
+                              <TableHead>Impact</TableHead>
+                              <TableHead>Submitted by</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredRecords.map((record) => (
+                              <TableRow key={record._id}>
+                                <TableCell>
+                                  <div className="min-w-52">
+                                    <p className="font-medium text-zinc-950">
+                                      {record.rank} {record.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {record.platoon} / {formatDesignation(record.designation)}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-2">
+                                    <StatusBadge
+                                      status={record.status}
+                                      customStatus={record.customStatus}
+                                    />
+                                    {isPermanentRecord(record) ? (
+                                      <Badge variant="outline">Permanent</Badge>
+                                    ) : null}
+                                    <Badge variant="outline">
+                                      {getRecordTemporalBucket(record)}
+                                    </Badge>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="min-w-44">
+                                    <p>{formatRecordPeriod(record)}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {formatRemarks(record.remarks)}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={record.affectParadeState ? "default" : "outline"}
+                                    className={
+                                      record.affectParadeState
+                                        ? "bg-emerald-800 text-white"
+                                        : ""
+                                    }
+                                  >
+                                    {record.affectParadeState ? "Impact" : "No impact"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="min-w-44">
+                                    <p className="font-medium text-zinc-950">
+                                      {record.submittedByName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {formatTimestampLabel(record.createdAt)}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <RecordActionsMenu
+                                    record={record}
+                                    onEdit={() => setSelectedRecord(record)}
+                                    onAdjustEndDate={() =>
+                                      setRecordForEndDateAdjust(record)
+                                    }
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">

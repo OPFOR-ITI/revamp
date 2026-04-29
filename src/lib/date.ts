@@ -1,4 +1,4 @@
-import { format, parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 
 import { SINGAPORE_TIME_ZONE } from "@/lib/constants";
 
@@ -76,6 +76,15 @@ export function formatTimestampLabel(timestamp: number) {
 
 export function formatCompactDateLabel(value: string) {
   return format(parseISO(value), "ddMMyy");
+}
+
+export function addDaysToDateString(value: string, amount: number) {
+  assertDateString(value);
+  return format(addDays(parseISO(value), amount), "yyyy-MM-dd");
+}
+
+export function getDayOffsetBetweenDates(startDate: string, endDate: string) {
+  return dateStringToDayIndex(endDate) - dateStringToDayIndex(startDate);
 }
 
 export function isValidTimeHHmm(value: string) {

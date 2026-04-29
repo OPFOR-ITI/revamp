@@ -17,7 +17,6 @@ import {
   subMonths,
 } from "date-fns";
 import {
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -36,8 +35,7 @@ import type {
   DutyCalendarDayGroup,
 } from "@/components/duties/types";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -62,11 +60,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -75,6 +68,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { DateStepperField } from "@/components/ui/date-stepper-field";
 import {
   DUTY_COLOR_CLASSES,
   DUTY_KIND_VALUES,
@@ -91,7 +85,6 @@ import {
 } from "@/lib/duties";
 import { PERSONNEL_ROUTE_PATH } from "@/lib/constants";
 import {
-  formatDateLabel,
   getTodaySingaporeDateString,
 } from "@/lib/date";
 import { cn } from "@/lib/utils";
@@ -154,36 +147,13 @@ function DateField({
   onChange: (value: string) => void;
   error?: string;
 }) {
-  const selectedDate = value ? parseISO(value) : undefined;
-
   return (
-    <FormItem>
-      <FormLabel>Date of Duty</FormLabel>
-      <Popover>
-        <PopoverTrigger
-          className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-10 w-full justify-between px-3 text-left font-normal",
-            !value && "text-muted-foreground",
-          )}
-        >
-          <span>{value ? formatDateLabel(value) : "Select date"}</span>
-          <CalendarDays className="size-4 text-muted-foreground" />
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-0">
-          <Calendar
-            mode="single"
-            selected={selectedDate}
-            onSelect={(nextDate) => {
-              if (nextDate) {
-                onChange(dateToString(nextDate));
-              }
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-      <FormMessage>{error}</FormMessage>
-    </FormItem>
+    <DateStepperField
+      label="Date of Duty"
+      value={value}
+      onChange={onChange}
+      error={error}
+    />
   );
 }
 
@@ -515,7 +485,7 @@ function DutyAssignmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {assignment ? "Edit Duty Assignment" : "Assign Duty"}
@@ -722,7 +692,11 @@ function DutyAssignmentDialog({
                   Delete
                 </Button>
               ) : null}
-              <Button type="submit" disabled={isSaving || isDeleting}>
+              <Button
+                type="submit"
+                disabled={isSaving || isDeleting}
+                className="w-full sm:w-auto"
+              >
                 {isSaving ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}

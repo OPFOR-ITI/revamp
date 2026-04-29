@@ -18,7 +18,7 @@ export function ParadeReportModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Parade Report</DialogTitle>
           <DialogDescription>

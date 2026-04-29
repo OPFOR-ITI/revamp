@@ -207,8 +207,8 @@ export function AppSidebarShell({
       <SidebarInset className="bg-transparent">
         <div className="flex min-h-svh flex-col">
           <header className="sticky top-0 z-20 border-b border-emerald-950/10 bg-background/80 backdrop-blur">
-            <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
-              <SidebarTrigger className="shrink-0" />
+            <div className="mx-auto flex w-full max-w-7xl items-start gap-3 px-4 py-3 sm:items-center sm:px-6">
+              <SidebarTrigger className="mt-0.5 shrink-0 sm:mt-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
                   Revamp operations board
@@ -227,7 +227,9 @@ export function AppSidebarShell({
                   ) : null}
                 </div>
                 {description ? (
-                  <p className="mt-1 text-sm text-zinc-600">{description}</p>
+                  <p className="mt-1 max-w-3xl text-sm leading-6 text-zinc-600">
+                    {description}
+                  </p>
                 ) : null}
               </div>
             </div>
