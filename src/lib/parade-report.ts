@@ -211,8 +211,6 @@ function getCompanyBucketForStatus(record: ParadeStateRecordDoc): CompanyOutBuck
     case "DB":
       return "DB";
     case "BOOKED OUT":
-    case "BOOK OUT":
-      return "BOOKED_OUT";
     default:
       return "OTHERS";
   }
