@@ -281,7 +281,6 @@ function DutyAssignmentButton({
         {assignment.rank} {assignment.name}
       </span>
       <div className="flex items-center justify-between gap-2 text-[11px]">
-        <span className="truncate">{assignment.platoon}</span>
         {assignment.isExtra ? (
           <span className="rounded-full border border-current/20 px-1.5 py-0.5 font-medium uppercase tracking-[0.14em]">
             Extra

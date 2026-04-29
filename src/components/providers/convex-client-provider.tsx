@@ -23,7 +23,7 @@ export function ConvexClientProvider({
       initialToken={initialToken}
     >
       {children}
-      <Toaster richColors position="top-right" />
+      <Toaster richColors position="bottom-right" />
     </ConvexBetterAuthProvider>
   );
 }

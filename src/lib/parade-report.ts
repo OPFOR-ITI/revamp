@@ -289,7 +289,7 @@ function formatAbsenceLine(absence: PersonnelAbsence) {
   const primary = formatStatusSummary(absence.primaryRecord);
   const secondary = absence.secondaryRecords.map((record) => formatStatusSummary(record));
   const suffix =
-    secondary.length > 0 ? `; also ${secondary.join("; also ")}` : "";
+    secondary.length > 0 ? `, ${secondary.join(", ")}` : "";
 
   return formatPersonLine(absence.personnel, `${primary}${suffix}`);
 }
