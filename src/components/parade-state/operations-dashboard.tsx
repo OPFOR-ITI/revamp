@@ -242,6 +242,7 @@ type RecordTemporalFilter = "all" | "active" | "past" | "future";
 type ImpactFilter = "all" | "impact" | "no-impact";
 type DashboardView = "current-state" | "record-log";
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
+const MAX_CURRENT_STATE_NAME_LENGTH = 50;
 
 function getEmptyAddRecordValues(): AddRecordValues {
   return {
@@ -266,6 +267,12 @@ function getRecordTemporalBucket(record: ParadeStateRecordDoc) {
 
 function formatRemarks(value?: string) {
   return value?.trim() ? value.trim() : "No remarks";
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length > maxLength
+    ? `${value.slice(0, Math.max(maxLength - 1, 0)).trimEnd()}…`
+    : value;
 }
 
 function formatRecordPeriod(record: {
@@ -415,7 +422,17 @@ function PersonnelPreview({
   );
 }
 
-function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
+function RecordCard({
+  record,
+  onEdit,
+  onDelete,
+  onAdjustEndDate,
+}: {
+  record: ParadeStateRecordDoc;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onAdjustEndDate?: () => void;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -432,9 +449,19 @@ function RecordCard({ record }: { record: ParadeStateRecordDoc }) {
             {formatRecordPeriod(record)}
           </p>
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <p>Submitted by {record.submittedByName}</p>
-          <p>{formatTimestampLabel(record.createdAt)}</p>
+        <div className="flex items-start gap-3">
+          <div className="text-right text-xs text-muted-foreground">
+            <p>Submitted by {record.submittedByName}</p>
+            <p>{formatTimestampLabel(record.createdAt)}</p>
+          </div>
+          {onEdit && onDelete && onAdjustEndDate ? (
+            <RecordActionsMenu
+              record={record}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onAdjustEndDate={onAdjustEndDate}
+            />
+          ) : null}
         </div>
       </div>
       <p className="mt-3 text-sm leading-6 text-zinc-600">
@@ -1293,10 +1320,16 @@ function PersonnelRecordsSheet({
   open,
   onOpenChange,
   selectedRow,
+  onEditRecord,
+  onDeleteRecord,
+  onAdjustEndDate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedRow: CurrentStateRow | null;
+  onEditRecord: (record: ParadeStateRecordDoc) => void;
+  onDeleteRecord: (record: ParadeStateRecordDoc) => void;
+  onAdjustEndDate: (record: ParadeStateRecordDoc) => void;
 }) {
   const records = useQuery(
     api.paradeState.listRecordsForPersonnel,
@@ -1324,7 +1357,15 @@ function PersonnelRecordsSheet({
               <Skeleton className="h-32 rounded-2xl" />
             </>
           ) : records.length ? (
-            records.map((record) => <RecordCard key={record._id} record={record} />)
+            records.map((record) => (
+              <RecordCard
+                key={record._id}
+                record={record}
+                onEdit={() => onEditRecord(record)}
+                onDelete={() => onDeleteRecord(record)}
+                onAdjustEndDate={() => onAdjustEndDate(record)}
+              />
+            ))
           ) : (
             <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
               No records found for this serviceman.
@@ -1339,10 +1380,12 @@ function PersonnelRecordsSheet({
 function RecordActionsMenu({
   record,
   onEdit,
+  onDelete,
   onAdjustEndDate,
 }: {
   record: ParadeStateRecordDoc;
   onEdit: () => void;
+  onDelete: () => void;
   onAdjustEndDate: () => void;
 }) {
   return (
@@ -1362,6 +1405,10 @@ function RecordActionsMenu({
             Adjust end date
           </DropdownMenuItem>
         ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={onDelete}>
+          Delete
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1418,10 +1465,12 @@ function CurrentStateMobileCard({
 function RecordLogMobileCard({
   record,
   onEdit,
+  onDelete,
   onAdjustEndDate,
 }: {
   record: ParadeStateRecordDoc;
   onEdit: () => void;
+  onDelete: () => void;
   onAdjustEndDate: () => void;
 }) {
   return (
@@ -1438,6 +1487,7 @@ function RecordLogMobileCard({
         <RecordActionsMenu
           record={record}
           onEdit={onEdit}
+          onDelete={onDelete}
           onAdjustEndDate={onAdjustEndDate}
         />
       </div>
@@ -1471,6 +1521,91 @@ function RecordLogMobileCard({
   );
 }
 
+function DeleteRecordDialog({
+  open,
+  onOpenChange,
+  record,
+  onDeleted,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  record: ParadeStateRecordDoc | null;
+  onDeleted: (record: ParadeStateRecordDoc) => void;
+}) {
+  const deleteRecord = useMutation(api.paradeState.deleteRecord);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleDelete() {
+    if (!record) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await deleteRecord({ recordId: record._id });
+      toast.success("Record deleted.");
+      onDeleted(record);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to delete record.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Delete Record</DialogTitle>
+          <DialogDescription>
+            This permanently removes the selected status log entry.
+          </DialogDescription>
+        </DialogHeader>
+
+        {record ? (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+              <p className="font-medium text-zinc-950">
+                {record.rank} {record.name}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {formatStatusLabel(record.status, record.customStatus)} ·{" "}
+                {formatRecordPeriod(record)}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                {formatRemarks(record.remarks)}
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void handleDelete()}
+                disabled={isSubmitting}
+                className="w-full sm:w-auto"
+              >
+                {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
+                Delete record
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function OperationsDashboard({
   initialView,
   viewer,
@@ -1497,6 +1632,8 @@ export function OperationsDashboard({
   const [selectedRecord, setSelectedRecord] = useState<ParadeStateRecordDoc | null>(
     null,
   );
+  const [recordPendingDelete, setRecordPendingDelete] =
+    useState<ParadeStateRecordDoc | null>(null);
   const [recordForEndDateAdjust, setRecordForEndDateAdjust] =
     useState<ParadeStateRecordDoc | null>(null);
   const [search, setSearch] = useState("");
@@ -1579,9 +1716,22 @@ export function OperationsDashboard({
 
   const currentState = currentStateQuery ?? [];
   const records = recordLog ?? [];
+  const rowForSelectedPersonnel = selectedRow
+    ? currentState.find((row) => row.personnelKey === selectedRow.personnelKey) ?? selectedRow
+    : null;
   const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
     (left, right) => left.localeCompare(right),
   );
+
+  function handleRecordDeleted(record: ParadeStateRecordDoc) {
+    if (selectedRecord?._id === record._id) {
+      setSelectedRecord(null);
+    }
+
+    if (recordForEndDateAdjust?._id === record._id) {
+      setRecordForEndDateAdjust(null);
+    }
+  }
 
   const filteredRecords = records.filter((record) => {
     const matchesStatus =
@@ -1863,7 +2013,13 @@ export function OperationsDashboard({
                                 <TableCell>
                                   <div className="min-w-44">
                                     <p className="font-medium text-zinc-950">
-                                      {row.rank} {row.name}
+                                      {row.rank}{" "}
+                                      <span title={row.name}>
+                                        {truncateText(
+                                          row.name,
+                                          MAX_CURRENT_STATE_NAME_LENGTH,
+                                        )}
+                                      </span>
                                     </p>
                                     <p className="text-xs text-muted-foreground">
                                       {row.records.length} active record
@@ -2037,6 +2193,7 @@ export function OperationsDashboard({
                           key={`${record._id}-mobile`}
                           record={record}
                           onEdit={() => setSelectedRecord(record)}
+                          onDelete={() => setRecordPendingDelete(record)}
                           onAdjustEndDate={() => setRecordForEndDateAdjust(record)}
                         />
                       ))}
@@ -2114,6 +2271,7 @@ export function OperationsDashboard({
                                   <RecordActionsMenu
                                     record={record}
                                     onEdit={() => setSelectedRecord(record)}
+                                    onDelete={() => setRecordPendingDelete(record)}
                                     onAdjustEndDate={() =>
                                       setRecordForEndDateAdjust(record)
                                     }
@@ -2174,7 +2332,20 @@ export function OperationsDashboard({
             setSelectedRow(null);
           }
         }}
-        selectedRow={selectedRow}
+        selectedRow={rowForSelectedPersonnel}
+        onEditRecord={setSelectedRecord}
+        onDeleteRecord={setRecordPendingDelete}
+        onAdjustEndDate={setRecordForEndDateAdjust}
+      />
+      <DeleteRecordDialog
+        open={!!recordPendingDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRecordPendingDelete(null);
+          }
+        }}
+        record={recordPendingDelete}
+        onDeleted={handleRecordDeleted}
       />
     </SidebarProvider>
   );

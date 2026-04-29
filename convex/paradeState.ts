@@ -273,6 +273,22 @@ export const adjustEndDate = mutation({
   },
 });
 
+export const deleteRecord = mutation({
+  args: {
+    recordId: v.id("paradeStateRecords"),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, { requireApproved: true });
+
+    const existing = await ctx.db.get(args.recordId);
+    if (!existing) {
+      throw new ConvexError("The selected record no longer exists.");
+    }
+
+    await ctx.db.delete(args.recordId);
+  },
+});
+
 export const listCurrentState = query({
   args: {},
   handler: async (ctx) => {
