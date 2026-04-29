@@ -13,7 +13,7 @@ export default async function ParadeReportPage() {
         email: user.email,
         role: user.role,
       }}
-      title="Parade Report"
+      title="Parade Report Dashboard"
       description="Generate a copy-ready company parade-state message from live personnel, status, and duty data."
       navGroups={getPrimaryNavGroups({
         activeItem: "parade-state",
