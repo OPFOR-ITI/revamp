@@ -43,6 +43,12 @@ function mapStatusValues<const T extends readonly { value: string }[]>(definitio
 
 export const STATUS_VALUES = mapStatusValues(STATUS_DEFINITIONS);
 
+export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
+  "AWOL",
+  "DB",
+  "SEND OUT",
+];
+
 export const STATUS_AFFECTS_PARADE_STATE = Object.fromEntries(
   STATUS_DEFINITIONS.map((definition) => [
     definition.value,
@@ -70,6 +76,10 @@ export function formatStatusLabel(status: Status, customStatus?: string) {
   // return normalizedCustomStatus
   //   ? `${OTHER_STATUS_VALUE}(${normalizedCustomStatus})`
   //   : OTHER_STATUS_VALUE;
+}
+
+export function shouldHideRecordPeriodMetadata(status: Status) {
+  return HIDE_RECORD_PERIOD_METADATA_STATUSES.includes(status);
 }
 
 export function isPermanentRecord(record: {

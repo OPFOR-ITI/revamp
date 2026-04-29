@@ -5,6 +5,7 @@ import {
   formatCompactDateLabel,
   isValidTimeHHmm,
 } from "@/lib/date";
+import { shouldHideRecordPeriodMetadata } from "@/lib/constants";
 import {
   createPersonnelKey,
   type PersonnelRecord,
@@ -266,14 +267,18 @@ function formatStatusLabel(record: Pick<ParadeStateRecordDoc, "status" | "custom
 
 function formatStatusSummary(record: StatusLikeRecord) {
   const label = formatStatusLabel(record);
-  const durationDays = getInclusiveDurationDays(record);
-  const datePart = formatCompactDateRange(record);
   const remarkPart = record.remarks?.trim() ? `; ${record.remarks.trim()}` : "";
+
+  if (shouldHideRecordPeriodMetadata(record.status)) {
+    return `${label}${remarkPart}`.trim();
+  }
 
   if (record.isPermanent || !record.endDate) {
     return `PERM ${label}${remarkPart}`.trim();
   }
 
+  const durationDays = getInclusiveDurationDays(record);
+  const datePart = formatCompactDateRange(record);
   const durationPart = durationDays ? `${durationDays}D ` : "";
 
   return `${label} ${durationPart}${datePart}${remarkPart}`.trim();
