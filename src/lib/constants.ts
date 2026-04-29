@@ -48,6 +48,7 @@ export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
   "AWOL",
   "DB",
   "SEND OUT",
+  "STAY OUT",
 ];
 
 export const STATUS_AFFECTS_PARADE_STATE = Object.fromEntries(
