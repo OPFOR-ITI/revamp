@@ -3,7 +3,9 @@ import { ConvexError, v } from "convex/values";
 import {
   isEligibleForDuty,
   isHalfStepNumber,
+  isZeroPointDutyPreset,
   normalizeDutyType,
+  resolveDutyPoints,
   sanitizeDutyType,
   type DutyPreset,
 } from "../src/lib/duties";
@@ -18,6 +20,7 @@ const dutyPresetValidator = v.union(
   v.literal("DOO"),
   v.literal("CDS"),
   v.literal("COS"),
+  v.literal("COS RESERVE"),
   v.null(),
 );
 
@@ -39,8 +42,16 @@ function validateDutyPreset(value: DutyPreset | null, dutyType: string) {
   }
 }
 
-function validatePoints(points: number, isExtra: boolean) {
-  if (isExtra) {
+function validatePoints({
+  dutyPreset,
+  points,
+  isExtra,
+}: {
+  dutyPreset: DutyPreset | null;
+  points: number;
+  isExtra: boolean;
+}) {
+  if (isExtra || isZeroPointDutyPreset(dutyPreset)) {
     return 0;
   }
 
@@ -56,7 +67,7 @@ function validatePoints(points: number, isExtra: boolean) {
     throw new ConvexError("Points must use 0.5 increments.");
   }
 
-  return points;
+  return resolveDutyPoints({ dutyPreset, points, isExtra });
 }
 
 function normalizeDutyInput({
@@ -201,7 +212,11 @@ export const createAssignment = mutation({
       rank,
       designation,
     });
-    const points = validatePoints(args.points, args.isExtra);
+    const points = validatePoints({
+      dutyPreset: args.dutyPreset,
+      points: args.points,
+      isExtra: args.isExtra,
+    });
 
     await ensureNoDuplicateAssignment(ctx, {
       dateOfDuty: args.dateOfDuty,
@@ -266,7 +281,11 @@ export const updateAssignment = mutation({
       rank,
       designation,
     });
-    const points = validatePoints(args.points, args.isExtra);
+    const points = validatePoints({
+      dutyPreset: args.dutyPreset,
+      points: args.points,
+      isExtra: args.isExtra,
+    });
 
     await ensureNoDuplicateAssignment(ctx, {
       dateOfDuty: args.dateOfDuty,

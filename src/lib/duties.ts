@@ -3,18 +3,21 @@ import { z } from "zod";
 
 import { assertDateString } from "@/lib/date";
 
-export const DUTY_PRESETS = ["CDO", "DOO", "CDS", "COS"] as const;
+export const DUTY_PRESETS = ["CDO", "CDS", "COS", "COS RESERVE", "DOO"] as const;
 export const DUTY_KIND_VALUES = [...DUTY_PRESETS, "CUSTOM"] as const;
 export const MAX_DUTY_TYPE_LENGTH = 100;
 
 export type DutyPreset = (typeof DUTY_PRESETS)[number];
 export type DutyKind = (typeof DUTY_KIND_VALUES)[number];
 
+const ZERO_POINT_DUTY_PRESETS: readonly DutyPreset[] = ["COS RESERVE"];
+
 export const DUTY_COLOR_CLASSES: Record<DutyPreset | "CUSTOM", string> = {
   CDO: "border-cyan-300 bg-cyan-50 text-cyan-950",
   DOO: "border-sky-300 bg-sky-50 text-sky-950",
   CDS: "border-amber-300 bg-amber-50 text-amber-950",
   COS: "border-emerald-300 bg-emerald-50 text-emerald-950",
+  "COS RESERVE": "border-emerald-800 bg-emerald-50 text-emerald-950",
   CUSTOM: "border-zinc-300 bg-zinc-100 text-zinc-900",
 };
 
@@ -38,8 +41,19 @@ export function getDutyKindFromPreset(value: DutyPreset | null): DutyKind {
   return value ?? "CUSTOM";
 }
 
-export function getDefaultDutyPoints(dateOfDuty: string) {
+export function isZeroPointDutyPreset(dutyPreset: DutyPreset | null) {
+  return dutyPreset !== null && ZERO_POINT_DUTY_PRESETS.includes(dutyPreset);
+}
+
+export function getDefaultDutyPoints(
+  dateOfDuty: string,
+  dutyPreset: DutyPreset | null = null,
+) {
   assertDateString(dateOfDuty);
+
+  if (isZeroPointDutyPreset(dutyPreset)) {
+    return 0;
+  }
 
   const day = getDay(parseISO(dateOfDuty));
 
@@ -52,6 +66,22 @@ export function getDefaultDutyPoints(dateOfDuty: string) {
   }
 
   return 1;
+}
+
+export function resolveDutyPoints({
+  dutyPreset,
+  points,
+  isExtra,
+}: {
+  dutyPreset: DutyPreset | null;
+  points: number;
+  isExtra: boolean;
+}) {
+  if (isExtra || isZeroPointDutyPreset(dutyPreset)) {
+    return 0;
+  }
+
+  return points;
 }
 
 export function isHalfStepNumber(value: number) {
@@ -85,6 +115,7 @@ export function isEligibleForDuty({
     case "CDS":
       return normalizedDesignation === "PS";
     case "COS":
+    case "COS RESERVE":
       return (
         normalizedDesignation === "SC" ||
         normalizedRank === "CFC" ||
@@ -103,6 +134,8 @@ export function getDutyEligibilityDescription(dutyPreset: DutyPreset | null) {
       return "Only personnel with PS designation can be assigned.";
     case "COS":
       return "Requires SC designation or rank CFC/CPL.";
+    case "COS RESERVE":
+      return "Requires SC designation or rank CFC/CPL. No points are awarded.";
     default:
       return "Custom duties can be assigned to any personnel.";
   }
@@ -154,7 +187,10 @@ export const dutyAssignmentFormSchema = z
       });
     }
 
-    if (values.isExtra) {
+    if (
+      values.isExtra ||
+      isZeroPointDutyPreset(getDutyPresetFromKind(values.dutyKind))
+    ) {
       return;
     }
 

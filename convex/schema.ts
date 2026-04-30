@@ -64,6 +64,7 @@ export default defineSchema({
       v.literal("DOO"),
       v.literal("CDS"),
       v.literal("COS"),
+      v.literal("COS RESERVE"),
       v.null(),
     ),
     dateOfDuty: v.string(),

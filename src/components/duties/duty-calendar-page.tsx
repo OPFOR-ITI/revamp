@@ -80,6 +80,8 @@ import {
   getDutyKindFromPreset,
   getDutyPresetFromKind,
   isEligibleForDuty,
+  isZeroPointDutyPreset,
+  resolveDutyPoints,
   sanitizeDutyType,
   type DutyKind,
 } from "@/lib/duties";
@@ -122,7 +124,7 @@ function getCreateDefaultValues(dateOfDuty: string): DutyAssignmentFormData {
     customDutyType: "",
     personnelKey: "",
     dateOfDuty,
-    points: getDefaultDutyPoints(dateOfDuty),
+    points: getDefaultDutyPoints(dateOfDuty, DUTY_PRESETS[0]),
     isExtra: false,
   };
 }
@@ -133,7 +135,11 @@ function getEditDefaultValues(assignment: DutyAssignmentDoc): DutyAssignmentForm
     customDutyType: assignment.dutyPreset ? "" : assignment.dutyType,
     personnelKey: assignment.personnelKey,
     dateOfDuty: assignment.dateOfDuty,
-    points: assignment.points,
+    points: resolveDutyPoints({
+      dutyPreset: assignment.dutyPreset,
+      points: assignment.points,
+      isExtra: assignment.isExtra,
+    }),
     isExtra: assignment.isExtra,
   };
 }
@@ -204,6 +210,7 @@ function DutyLegend() {
         { label: "DOO", key: "DOO" as const },
         { label: "CDS", key: "CDS" as const },
         { label: "COS", key: "COS" as const },
+        { label: "COS RESERVE", key: "COS RESERVE" as const },
         { label: "Custom", key: "CUSTOM" as const },
       ].map((item) => (
         <span
@@ -244,7 +251,13 @@ function DutyAssignmentButton({
           {assignment.dutyType}
         </span>
         <span className="shrink-0 text-[11px] font-semibold">
-          {formatPointsLabel(assignment.points)}
+          {formatPointsLabel(
+            resolveDutyPoints({
+              dutyPreset: assignment.dutyPreset,
+              points: assignment.points,
+              isExtra: assignment.isExtra,
+            }),
+          )}
         </span>
       </div>
       <span className="truncate text-sm font-medium">
@@ -312,6 +325,7 @@ function DutyAssignmentDialog({
   });
 
   const dutyPreset = getDutyPresetFromKind(selectedDutyKind);
+  const isZeroPointDuty = isZeroPointDutyPreset(dutyPreset);
   const filteredPersonnel = personnel.filter((person) =>
     isEligibleForDuty({
       dutyPreset,
@@ -366,11 +380,23 @@ function DutyAssignmentDialog({
       return;
     }
 
-    form.setValue("points", getDefaultDutyPoints(selectedDate), {
+    form.setValue("points", getDefaultDutyPoints(selectedDate, dutyPreset), {
       shouldDirty: false,
       shouldValidate: true,
     });
-  }, [form, isExtra, selectedDate]);
+  }, [dutyPreset, form, isExtra, selectedDate]);
+
+  useEffect(() => {
+    if (!isZeroPointDuty || isExtra) {
+      return;
+    }
+
+    isPointsManualRef.current = false;
+    form.setValue("points", 0, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
+  }, [form, isExtra, isZeroPointDuty]);
 
   function handleExtraChange(nextValue: boolean) {
     form.setValue("isExtra", nextValue, {
@@ -388,7 +414,7 @@ function DutyAssignmentDialog({
     }
 
     isPointsManualRef.current = false;
-    form.setValue("points", getDefaultDutyPoints(form.getValues("dateOfDuty")), {
+    form.setValue("points", getDefaultDutyPoints(form.getValues("dateOfDuty"), dutyPreset), {
       shouldDirty: true,
       shouldValidate: true,
     });
@@ -402,7 +428,7 @@ function DutyAssignmentDialog({
     }
 
     isPointsManualRef.current = false;
-    form.setValue("points", getDefaultDutyPoints(dateOfDuty), {
+    form.setValue("points", getDefaultDutyPoints(dateOfDuty, dutyPreset), {
       shouldDirty: true,
       shouldValidate: true,
     });
@@ -417,6 +443,7 @@ function DutyAssignmentDialog({
     }
 
     const dutyType = getDutyTypeFromForm(values);
+    const nextDutyPreset = getDutyPresetFromKind(values.dutyKind);
 
     return {
       personnelKey: selectedPersonnel.personnelKey,
@@ -425,9 +452,13 @@ function DutyAssignmentDialog({
       platoon: selectedPersonnel.platoon,
       designation: selectedPersonnel.designation,
       dutyType,
-      dutyPreset: getDutyPresetFromKind(values.dutyKind),
+      dutyPreset: nextDutyPreset,
       dateOfDuty: values.dateOfDuty,
-      points: values.isExtra ? 0 : values.points,
+      points: resolveDutyPoints({
+        dutyPreset: nextDutyPreset,
+        points: values.points,
+        isExtra: values.isExtra,
+      }),
       isExtra: values.isExtra,
     };
   }
@@ -603,8 +634,9 @@ function DutyAssignmentDialog({
                 <div>
                   <FormLabel htmlFor="duty-points">Points</FormLabel>
                   <FormDescription>
-                    Defaults follow the selected weekday. You can override unless
-                    the duty is marked as extra.
+                    {isZeroPointDuty
+                      ? "This duty does not award points."
+                      : "Defaults follow the selected weekday. You can override unless the duty is marked as extra."}
                   </FormDescription>
                 </div>
                 <Button
@@ -612,7 +644,7 @@ function DutyAssignmentDialog({
                   variant="ghost"
                   size="sm"
                   onClick={handleUseDefaultPoints}
-                  disabled={isExtra}
+                  disabled={isExtra || isZeroPointDuty}
                 >
                   <RotateCcw className="size-4" />
                   Use default
@@ -625,7 +657,7 @@ function DutyAssignmentDialog({
                 step="0.5"
                 min="0"
                 value={Number.isFinite(points) ? String(points) : ""}
-                disabled={isExtra}
+                disabled={isExtra || isZeroPointDuty}
                 onChange={(event) => {
                   isPointsManualRef.current = true;
                   form.setValue(
