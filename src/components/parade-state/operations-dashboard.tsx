@@ -1,5 +1,6 @@
 "use client";
 
+import { format, parseISO } from "date-fns";
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -7,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import {
+  CalendarDays,
   ChevronsUpDown,
   Loader2,
   LogOut,
@@ -31,6 +33,7 @@ import {
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -65,6 +68,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -120,6 +128,7 @@ import {
 } from "@/lib/constants";
 import {
   addDaysToDateString,
+  dateStringToDayIndex,
   getDayOffsetBetweenDates,
   formatDateLabel,
   formatTimestampLabel,
@@ -258,7 +267,6 @@ const adjustEndDateSchema = z.object({
 type AddRecordValues = z.infer<typeof addRecordSchema>;
 type EditRecordValues = z.infer<typeof editRecordSchema>;
 type AdjustEndDateValues = z.infer<typeof adjustEndDateSchema>;
-type RecordTemporalFilter = "all" | "active" | "past" | "future";
 type ImpactFilter = "all" | "impact" | "no-impact";
 type DashboardView = "current-state" | "record-log";
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
@@ -315,6 +323,61 @@ function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
     >
       {affectsParadeState ? "Out of Camp" : "In Camp"}
     </Badge>
+  );
+}
+
+function CompactCalendarFilterField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  minDate,
+  maxDate,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  minDate?: string;
+  maxDate?: string;
+}) {
+  const selectedDate = value ? parseISO(value) : undefined;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label htmlFor={id} className="text-xs font-medium text-zinc-500">
+        {label}
+      </Label>
+      <Popover>
+        <PopoverTrigger
+          id={id}
+          className={`${buttonVariants({ variant: "ghost" })} h-full min-w-[8.75rem] justify-between rounded-sm px-2 text-sm font-normal shadow-none hover:bg-zinc-50 ${value ? "text-zinc-900" : "text-muted-foreground"}`}
+        >
+          <span>{value ? formatDateLabel(value) : placeholder}</span>
+          <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(nextDate) => {
+              if (nextDate) {
+                onChange(format(nextDate, "yyyy-MM-dd"));
+              }
+            }}
+            disabled={(date) => {
+              const nextValue = format(date, "yyyy-MM-dd");
+              return (
+                (minDate ? nextValue < minDate : false) ||
+                (maxDate ? nextValue > maxDate : false)
+              );
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
 
@@ -1767,8 +1830,10 @@ export function OperationsDashboard({
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [platoonFilter, setPlatoonFilter] = useState("all");
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
-  const [temporalFilter, setTemporalFilter] =
-    useState<RecordTemporalFilter>("all");
+  const [recordFilterFromDate, setRecordFilterFromDate] = useState(
+    getTodaySingaporeDateString(),
+  );
+  const [recordFilterToDate, setRecordFilterToDate] = useState("");
   const [activeView, setActiveView] = useState<DashboardView>(initialView);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -1842,6 +1907,12 @@ export function OperationsDashboard({
 
   const currentState = currentStateQuery ?? [];
   const records = recordLog ?? [];
+  const todayDate = getTodaySingaporeDateString();
+  const effectiveRecordFilterToDate =
+    recordFilterToDate ||
+    (recordFilterFromDate > todayDate ? recordFilterFromDate : todayDate);
+  const recordFilterStartDay = dateStringToDayIndex(recordFilterFromDate);
+  const recordFilterEndDay = dateStringToDayIndex(effectiveRecordFilterToDate);
   const rowForSelectedPersonnel = selectedRow
     ? currentState.find((row) => row.personnelKey === selectedRow.personnelKey) ?? selectedRow
     : null;
@@ -1870,9 +1941,9 @@ export function OperationsDashboard({
         : impactFilter === "impact"
           ? record.affectParadeState
           : !record.affectParadeState;
-    const temporalBucket = getRecordTemporalBucket(record);
-    const matchesTemporal =
-      temporalFilter === "all" ? true : temporalBucket === temporalFilter;
+    const matchesDateRange =
+      record.startDay <= recordFilterEndDay &&
+      (record.endDay === undefined || record.endDay >= recordFilterStartDay);
     const matchesSearch = deferredSearch
       ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)} ${formatStatusLabel(record.status, record.customStatus)}`
           .toLowerCase()
@@ -1883,7 +1954,7 @@ export function OperationsDashboard({
       matchesStatus &&
       matchesPlatoon &&
       matchesImpact &&
-      matchesTemporal &&
+      matchesDateRange &&
       matchesSearch
     );
   });
@@ -1895,29 +1966,40 @@ export function OperationsDashboard({
       ? "One row per serviceman with overlapping active statuses grouped together."
       : "Historical parade-state records with compact client-side filters.";
   const hasRecordSearch = search.trim().length > 0;
+  const hasCustomDateRange =
+    recordFilterFromDate !== todayDate || recordFilterToDate !== "";
   const hasActiveRecordFilters =
     hasRecordSearch ||
     statusFilter !== "all" ||
     platoonFilter !== "all" ||
     impactFilter !== "all" ||
-    temporalFilter !== "all";
+    hasCustomDateRange;
   const activeRecordFilterCount = [
     hasRecordSearch,
     statusFilter !== "all",
     platoonFilter !== "all",
     impactFilter !== "all",
-    temporalFilter !== "all",
+    hasCustomDateRange,
   ].filter(Boolean).length;
   const nominalRollCount =
     isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
   const viewerInitials = getViewerInitials(viewer.name);
+
+  function handleRecordFilterFromDateChange(nextValue: string) {
+    setRecordFilterFromDate(nextValue);
+
+    if (recordFilterToDate && recordFilterToDate < nextValue) {
+      setRecordFilterToDate(nextValue);
+    }
+  }
 
   function clearRecordFilters() {
     setSearch("");
     setStatusFilter("all");
     setPlatoonFilter("all");
     setImpactFilter("all");
-    setTemporalFilter("all");
+    setRecordFilterFromDate(todayDate);
+    setRecordFilterToDate("");
   }
 
   return (
@@ -2231,33 +2313,25 @@ export function OperationsDashboard({
                   <CardTitle>Record Log</CardTitle>
                   <CardDescription>
                     Full historical log with compact filters for status, platoon,
-                    impact, and time bucket.
+                    impact, and active dates.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-4">
-                  <div className="space-y-3 rounded-2xl border border-emerald-950/10 bg-background/85 p-3 shadow-sm shadow-emerald-950/5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-950/10 bg-white/80 px-2.5 py-1 font-medium text-zinc-700">
+                  <div className="rounded-2xl border border-emerald-950/10 bg-background/85 p-3 shadow-sm shadow-emerald-950/5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-emerald-950/10 bg-white/80 px-2.5 text-xs font-medium text-zinc-700">
                           <SlidersHorizontal className="size-3.5" />
                           Filters
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="border-emerald-950/10 bg-white/80 text-zinc-700"
-                        >
-                          {filteredRecords.length} of {records.length} records
-                        </Badge>
                         {hasActiveRecordFilters ? (
                           <Badge
                             variant="outline"
-                            className="border-amber-300 bg-amber-50 text-amber-900"
+                            className="h-8 shrink-0 border-amber-300 bg-amber-50 px-2.5 text-amber-900"
                           >
                             {activeRecordFilterCount} active
                           </Badge>
-                        ) : (
-                          <span>Showing the full log</span>
-                        )}
+                        ) : null}
                       </div>
 
                       {hasActiveRecordFilters ? (
@@ -2266,7 +2340,7 @@ export function OperationsDashboard({
                           variant="ghost"
                           size="sm"
                           onClick={clearRecordFilters}
-                          className="h-8 px-2 text-xs text-zinc-600 hover:text-zinc-950"
+                          className="h-8 shrink-0 px-2 text-xs text-zinc-600 hover:text-zinc-950"
                         >
                           <X className="size-3.5" />
                           Clear
@@ -2274,113 +2348,110 @@ export function OperationsDashboard({
                       ) : null}
                     </div>
 
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.9fr)_repeat(4,minmax(0,0.9fr))]">
-                      <div className="grid gap-1.5">
-                        <Label
-                          htmlFor="record-search"
-                          className="text-[11px] uppercase tracking-[0.16em] text-zinc-500"
-                        >
-                          Search
+                    <div className="mt-2 flex flex-wrap items-center gap-2 xl:flex-nowrap">
+                      <div className="relative min-w-0 flex-1 xl:max-w-sm">
+                        <Label htmlFor="record-search" className="sr-only">
+                          Search records
                         </Label>
-                        <div className="relative">
-                          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="record-search"
-                            placeholder="Name, rank, platoon, status"
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            className="h-9 rounded-lg border-emerald-950/10 bg-white pl-9"
-                          />
-                        </div>
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="record-search"
+                          placeholder="Search"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          className="h-8 rounded-md border-emerald-950/10 bg-white pl-9"
+                        />
                       </div>
 
-                      <div className="grid gap-1.5">
-                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                          Status
-                        </Label>
-                        <Select
-                          value={statusFilter}
-                          onValueChange={(value) =>
-                            setStatusFilter((value ?? "all") as Status | "all")
-                          }
-                        >
-                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
-                            <SelectValue placeholder="All statuses" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All statuses</SelectItem>
-                            {STATUS_VALUES.map((status) => (
-                              <SelectItem key={status} value={status}>
-                                {formatStatusLabel(status)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="min-w-[9rem]">
+                          <Label className="sr-only">Status</Label>
+                          <Select
+                            value={statusFilter}
+                            onValueChange={(value) =>
+                              setStatusFilter((value ?? "all") as Status | "all")
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
+                              <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All statuses</SelectItem>
+                              {STATUS_VALUES.map((status) => (
+                                <SelectItem key={status} value={status}>
+                                  {formatStatusLabel(status)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                       </div>
 
-                      <div className="grid gap-1.5">
-                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                          Platoon
-                        </Label>
-                        <Select
-                          value={platoonFilter}
-                          onValueChange={(value) => setPlatoonFilter(value ?? "all")}
-                        >
-                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
-                            <SelectValue placeholder="All platoons" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All platoons</SelectItem>
-                            {platoonOptions.map((platoon) => (
-                              <SelectItem key={platoon} value={platoon}>
-                                {platoon}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="min-w-[8rem]">
+                          <Label className="sr-only">Platoon</Label>
+                          <Select
+                            value={platoonFilter}
+                            onValueChange={(value) => setPlatoonFilter(value ?? "all")}
+                          >
+                            <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
+                              <SelectValue placeholder="Platoon" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All platoons</SelectItem>
+                              {platoonOptions.map((platoon) => (
+                                <SelectItem key={platoon} value={platoon}>
+                                  {platoon}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                       </div>
 
-                      <div className="grid gap-1.5">
-                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                          Camp state
-                        </Label>
-                        <Select
-                          value={impactFilter}
-                          onValueChange={(value) =>
-                            setImpactFilter((value ?? "all") as ImpactFilter)
-                          }
-                        >
-                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
-                            <SelectValue placeholder="All records" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All records</SelectItem>
-                            <SelectItem value="impact">Out of camp</SelectItem>
-                            <SelectItem value="no-impact">In camp</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <div className="min-w-[9rem]">
+                          <Label className="sr-only">Camp state</Label>
+                          <Select
+                            value={impactFilter}
+                            onValueChange={(value) =>
+                              setImpactFilter((value ?? "all") as ImpactFilter)
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
+                              <SelectValue placeholder="Camp state" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All records</SelectItem>
+                              <SelectItem value="impact">Out of camp</SelectItem>
+                              <SelectItem value="no-impact">In camp</SelectItem>
+                            </SelectContent>
+                          </Select>
                       </div>
 
-                      <div className="grid gap-1.5">
-                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-                          Period
-                        </Label>
-                        <Select
-                          value={temporalFilter}
-                          onValueChange={(value) =>
-                            setTemporalFilter((value ?? "all") as RecordTemporalFilter)
-                          }
-                        >
-                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
-                            <SelectValue placeholder="All records" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All records</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="future">Upcoming</SelectItem>
-                            <SelectItem value="past">Past</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <div className="flex items-center gap-2 rounded-md border border-emerald-950/10 bg-white px-2 py-1">
+                        <CompactCalendarFilterField
+                          id="record-filter-from"
+                          label="From"
+                          value={recordFilterFromDate}
+                          onChange={handleRecordFilterFromDateChange}
+                          placeholder="Select"
+                          maxDate={recordFilterToDate || undefined}
+                        />
+                        <CompactCalendarFilterField
+                          id="record-filter-to"
+                          label="To"
+                          value={recordFilterToDate}
+                          onChange={setRecordFilterToDate}
+                          placeholder="Today"
+                          minDate={recordFilterFromDate}
+                        />
+                        {recordFilterToDate ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRecordFilterToDate("")}
+                            className="h-6 px-1.5 text-[11px] text-zinc-500 hover:bg-transparent hover:text-zinc-900"
+                          >
+                            Today
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
