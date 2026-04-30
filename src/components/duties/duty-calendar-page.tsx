@@ -214,6 +214,15 @@ const ALL_DUTY_FILTER_KEYS = new Set<DutyColorKey>(
   DUTY_FILTER_ITEMS.map((item) => item.key),
 );
 
+const DUTY_DOT_BG: Record<DutyColorKey, string> = {
+  CDO: "bg-cyan-500",
+  DOO: "bg-sky-500",
+  CDS: "bg-amber-500",
+  COS: "bg-emerald-500",
+  "COS RESERVE": "bg-emerald-800",
+  CUSTOM: "bg-zinc-400",
+};
+
 function DutyFilter({
   activeFilters,
   onToggle,
@@ -807,6 +816,7 @@ export function DutyCalendarPage({
   const [activeFilters, setActiveFilters] = useState<Set<DutyColorKey>>(
     () => new Set(ALL_DUTY_FILTER_KEYS),
   );
+  const scrollPositionRef = useRef(0);
 
   function handleFilterToggle(key: DutyColorKey) {
     setActiveFilters((prev) => {
@@ -922,6 +932,7 @@ export function DutyCalendarPage({
       return;
     }
 
+    scrollPositionRef.current = window.scrollY;
     setSelectedAssignment(null);
     setSelectedDate(dateOfDuty);
     setIsDialogOpen(true);
@@ -937,6 +948,7 @@ export function DutyCalendarPage({
       return;
     }
 
+    scrollPositionRef.current = window.scrollY;
     setSelectedAssignment(assignment);
     setSelectedDate(assignment.dateOfDuty);
     setIsDialogOpen(true);
@@ -1017,25 +1029,33 @@ export function DutyCalendarPage({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-0 md:gap-2">
             {WEEKDAY_LABELS.map((label) => (
               <div
                 key={label}
-                className="rounded-xl border border-emerald-950/10 bg-emerald-950/[0.03] px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-emerald-900/60"
+                className="py-1 text-center text-[10px] font-semibold uppercase text-zinc-400 md:rounded-xl md:border md:border-emerald-950/10 md:bg-emerald-950/[0.03] md:px-3 md:py-2 md:text-xs md:tracking-[0.2em] md:text-emerald-900/60"
               >
-                {label}
+                <span className="md:hidden">{label[0]}</span>
+                <span className="hidden md:inline">{label}</span>
               </div>
             ))}
           </div>
 
           {assignments === undefined ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 12 }).map((_, index) => (
-                <Skeleton key={index} className="h-40 rounded-2xl" />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-7 gap-0 md:hidden">
+                {Array.from({ length: 35 }).map((_, index) => (
+                  <Skeleton key={index} className="h-14 rounded-none" />
+                ))}
+              </div>
+              <div className="hidden md:grid md:grid-cols-7 md:gap-2">
+                {Array.from({ length: 35 }).map((_, index) => (
+                  <Skeleton key={index} className="h-28 rounded-2xl" />
+                ))}
+              </div>
+            </>
           ) : (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-7">
+            <div className="grid grid-cols-7 gap-0 md:gap-2">
               {dayGroups.map((day) => {
                 const visibleAssignments = day.assignments.filter((a) =>
                   activeFilters.has(getDutyColorKey(a.dutyPreset)),
@@ -1045,13 +1065,21 @@ export function DutyCalendarPage({
                   <div
                     key={day.dateKey}
                     className={cn(
-                      "flex min-h-20 flex-col gap-3 rounded-2xl border p-1 text-left",
+                      "flex flex-col text-left",
+                      // Mobile: compact cell with bottom separator
+                      "gap-[3px] px-[2px] pb-1 pt-[3px] border-b border-zinc-200/70",
+                      // Desktop: expanded card style
+                      "md:gap-3 md:rounded-2xl md:border md:p-1 md:min-h-16 md:pb-1",
+                      // Interactions
                       canManageAssignments &&
-                        "cursor-pointer transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
+                        "cursor-pointer transition-colors md:hover:border-emerald-700/30 md:hover:bg-emerald-950/[0.025]",
+                      // Month context
                       day.inCurrentMonth
-                        ? "border-emerald-950/10 bg-white/70"
-                        : "border-zinc-200/80 bg-zinc-50/70 text-muted-foreground",
-                      day.isToday && "ring-2 ring-emerald-700/25",
+                        ? "md:border-emerald-950/10 md:bg-white/70"
+                        : "md:border-zinc-200/80 md:bg-zinc-50/70",
+                      !day.inCurrentMonth && "text-muted-foreground",
+                      // Today highlight
+                      day.isToday && "md:ring-2 md:ring-emerald-700/25",
                     )}
                     onClick={
                       canManageAssignments
@@ -1071,7 +1099,54 @@ export function DutyCalendarPage({
                         : undefined
                     }
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    {/* ── Mobile: date number ── */}
+                    <span
+                      className={cn(
+                        "inline-flex size-6 items-center justify-center self-center rounded-full text-[11px] font-semibold md:hidden",
+                        day.isToday
+                          ? "bg-emerald-700 text-white"
+                          : day.inCurrentMonth
+                            ? "text-zinc-900"
+                            : "text-zinc-400",
+                      )}
+                    >
+                      {format(day.date, "d")}
+                    </span>
+
+                    {/* ── Mobile: inline duty labels ── */}
+                    {visibleAssignments.length > 0 && (
+                      <div className="flex flex-col gap-[2px] min-w-0 md:hidden">
+                        {visibleAssignments.map((a) => (
+                          <div
+                            key={a._id}
+                            role={canManageAssignments ? "button" : undefined}
+                            tabIndex={canManageAssignments ? 0 : undefined}
+                            onClick={
+                              canManageAssignments
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    openEditDialog(a);
+                                  }
+                                : undefined
+                            }
+                            className="flex items-center gap-[3px] min-w-0"
+                          >
+                            <span
+                              className={cn(
+                                "size-[6px] shrink-0 rounded-full",
+                                DUTY_DOT_BG[getDutyColorKey(a.dutyPreset)],
+                              )}
+                            />
+                            <span className="truncate text-[9px] font-medium leading-tight text-zinc-700">
+                              {a.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── Desktop: expanded date header ── */}
+                    <div className="hidden md:flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <span
                           className={cn(
@@ -1093,7 +1168,8 @@ export function DutyCalendarPage({
                       </span>
                     </div>
 
-                    <div className="grid gap-2">
+                    {/* ── Desktop: full assignment cards ── */}
+                    <div className="hidden md:grid gap-2">
                       {visibleAssignments.length ? (
                         visibleAssignments.map((assignment) => (
                           <DutyAssignmentButton
@@ -1104,7 +1180,7 @@ export function DutyCalendarPage({
                           />
                         ))
                       ) : (
-                        <div className="rounded-xl border border-dashed border-border px-3 py-4 text-[14px] text-muted-foreground">
+                        <div className="rounded-xl border border-dashed border-border px-3 py-4 text-[14px] h-10 text-muted-foreground">
                           NIL
                         </div>
                       )}
@@ -1126,6 +1202,12 @@ export function DutyCalendarPage({
 
             if (!open) {
               setSelectedAssignment(null);
+              const savedPosition = scrollPositionRef.current;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  window.scrollTo(0, savedPosition);
+                });
+              });
             }
           }}
           assignment={selectedAssignment}
