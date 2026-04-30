@@ -251,13 +251,14 @@ function DutyAssignmentButton({
           {assignment.dutyType}
         </span>
         <span className="shrink-0 text-[11px] font-semibold">
-          {formatPointsLabel(
+          {/* hide points */}
+          {/* {formatPointsLabel(
             resolveDutyPoints({
               dutyPreset: assignment.dutyPreset,
               points: assignment.points,
               isExtra: assignment.isExtra,
             }),
-          )}
+          )} */}
         </span>
       </div>
       <span className="truncate text-sm font-medium">
