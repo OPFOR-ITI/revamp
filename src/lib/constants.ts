@@ -169,9 +169,10 @@ export const GOOGLE_SHEETS_HEADERS = [
   "Platoon",
   "Designation",
 ] as const;
+export const GOOGLE_SHEETS_ALIAS_HEADER = "Alias" as const;
 
 export const SINGAPORE_TIME_ZONE = "Asia/Singapore";
 export const MAX_REMARKS_LENGTH = 500;
 export const MAX_CUSTOM_STATUS_LENGTH = 100;
 export const PERSONNEL_ROUTE_PATH = "/api/personnel";
-export const PERSONNEL_SHEET_DEFAULT_RANGE = "Personnel!A:D";
+export const PERSONNEL_SHEET_DEFAULT_RANGE = "Personnel!A:E";

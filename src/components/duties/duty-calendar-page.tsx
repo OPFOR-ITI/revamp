@@ -39,9 +39,7 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Dialog,
@@ -93,6 +91,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   formatDesignation,
+  getPersonnelDisplayName,
   personnelRecordSchema,
   type PersonnelRecord,
 } from "@/lib/personnel";
@@ -160,7 +159,27 @@ function DateField({
   );
 }
 
-function PersonnelPreview({ personnel }: { personnel?: PersonnelRecord }) {
+function formatDutyPersonnelName(personnel: {
+  name: string;
+  alias?: string;
+}) {
+  return getPersonnelDisplayName(personnel);
+}
+
+function getDutyAssignmentDisplayName(
+  assignment: Pick<DutyAssignmentDoc, "personnelKey" | "name">,
+  personnelByKey: Map<string, PersonnelRecord>,
+) {
+  return formatDutyPersonnelName(
+    personnelByKey.get(assignment.personnelKey) ?? assignment,
+  );
+}
+
+function PersonnelPreview({
+  personnel,
+}: {
+  personnel?: PersonnelRecord;
+}) {
   return (
     <div className="grid gap-3 rounded-2xl border border-emerald-950/10 bg-emerald-950/[0.03] p-4 sm:grid-cols-2">
       <div>
@@ -257,10 +276,12 @@ function DutyFilter({
 
 function DutyAssignmentButton({
   assignment,
+  displayName,
   canManageAssignments,
   onClick,
 }: {
   assignment: DutyAssignmentDoc;
+  displayName: string;
   canManageAssignments: boolean;
   onClick: () => void;
 }) {
@@ -280,7 +301,7 @@ function DutyAssignmentButton({
           <span className="shrink-0 text-[11px] font-semibold" />
         </div>
         <span className="truncate text-sm font-medium">
-          {assignment.rank} {assignment.name}
+          {assignment.rank} {displayName}
         </span>
         <div className="flex items-center justify-between gap-2 text-[11px]">
           {assignment.isExtra ? (
@@ -323,7 +344,7 @@ function DutyAssignmentButton({
         ) : null}
       </div>
       <span className="truncate text-[11px] font-medium">
-        {assignment.rank} {assignment.name}
+        {assignment.rank} {displayName}
       </span>
     </button>
   );
@@ -896,6 +917,9 @@ export function DutyCalendarPage({
   const canOpenAssignmentEditor =
     canManageAssignments &&
     !isPersonnelLoading && !personnelError && personnel.length > 0;
+  const personnelByKey = new Map(
+    personnel.map((person) => [person.personnelKey, person] as const),
+  );
 
   const assignmentsByDate = new Map<string, DutyAssignmentDoc[]>();
 
@@ -1116,7 +1140,13 @@ export function DutyCalendarPage({
                     {/* ── Mobile: inline duty labels ── */}
                     {visibleAssignments.length > 0 && (
                       <div className="flex flex-col gap-[2px] min-w-0 md:hidden">
-                        {visibleAssignments.map((a) => (
+                        {visibleAssignments.map((a) => {
+                          const displayName = getDutyAssignmentDisplayName(
+                            a,
+                            personnelByKey,
+                          );
+
+                          return (
                           <div
                             key={a._id}
                             role={canManageAssignments ? "button" : undefined}
@@ -1138,10 +1168,11 @@ export function DutyCalendarPage({
                               )}
                             />
                             <span className="truncate text-[9px] font-medium leading-tight text-zinc-700">
-                              {a.name}
+                              {displayName}
                             </span>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1171,14 +1202,22 @@ export function DutyCalendarPage({
                     {/* ── Desktop: full assignment cards ── */}
                     <div className="hidden md:grid gap-2">
                       {visibleAssignments.length ? (
-                        visibleAssignments.map((assignment) => (
+                        visibleAssignments.map((assignment) => {
+                          const displayName = getDutyAssignmentDisplayName(
+                            assignment,
+                            personnelByKey,
+                          );
+
+                          return (
                           <DutyAssignmentButton
                             key={assignment._id}
                             assignment={assignment}
+                            displayName={displayName}
                             canManageAssignments={canManageAssignments}
                             onClick={() => openEditDialog(assignment)}
                           />
-                        ))
+                          );
+                        })
                       ) : (
                         <div className="rounded-xl border border-dashed border-border px-3 py-4 text-[14px] h-10 text-muted-foreground">
                           NIL

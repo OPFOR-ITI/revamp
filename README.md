@@ -28,7 +28,7 @@ Internal Next.js + Convex app for managing parade-state records against a read-o
    NEXT_PUBLIC_SITE_URL=http://localhost:3000
    GOOGLE_SHEETS_API_KEY=
    GOOGLE_SHEETS_SPREADSHEET_ID=1bu2hgyqID8XNuH7iCzR5dtb1JRzzl5KsclODcqrUogU
-   GOOGLE_SHEETS_RANGE=Personnel!A:D
+   GOOGLE_SHEETS_RANGE=Personnel!A:E
    ```
 
 3. Set required Convex deployment env vars:

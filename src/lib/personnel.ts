@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { GOOGLE_SHEETS_HEADERS } from "@/lib/constants";
+import {
+  GOOGLE_SHEETS_ALIAS_HEADER,
+  GOOGLE_SHEETS_HEADERS,
+} from "@/lib/constants";
 
 export const personnelRecordSchema = z.object({
   personnelKey: z.string(),
@@ -8,6 +11,7 @@ export const personnelRecordSchema = z.object({
   name: z.string(),
   platoon: z.string(),
   designation: z.string(),
+  alias: z.string().optional(),
   label: z.string(),
 });
 
@@ -97,6 +101,15 @@ function createPersonnelLabel(record: Omit<PersonnelRecord, "label">) {
   return `${record.rank} ${record.name} / ${record.platoon} / ${designation}`;
 }
 
+export function getPersonnelDisplayName(person: {
+  name: string;
+  alias?: string;
+}) {
+  const alias = trimCell(person.alias);
+
+  return alias || person.name;
+}
+
 export function normalizePersonnelRows(values: string[][]) {
   if (!values.length) {
     throw new PersonnelNormalizationError(
@@ -105,17 +118,22 @@ export function normalizePersonnelRows(values: string[][]) {
     );
   }
 
-  const actualHeaders = values[0].slice(0, 4).map(trimCell);
+  const actualHeaders = values[0].slice(0, 5).map(trimCell);
   const expectedHeaders = [...GOOGLE_SHEETS_HEADERS];
 
+  const baseHeadersMatch = expectedHeaders.every(
+    (header, index) => actualHeaders[index] === header,
+  );
+  const aliasHeader = actualHeaders[expectedHeaders.length];
+  const hasAliasColumn = aliasHeader === GOOGLE_SHEETS_ALIAS_HEADER;
   const headersMatch =
-    actualHeaders.length === expectedHeaders.length &&
-    actualHeaders.every((header, index) => header === expectedHeaders[index]);
+    baseHeadersMatch &&
+    (aliasHeader === undefined || aliasHeader === "" || hasAliasColumn);
 
   if (!headersMatch) {
     throw new PersonnelNormalizationError(
       "PERSONNEL_HEADERS_INVALID",
-      `Expected headers ${expectedHeaders.join(", ")} but received ${actualHeaders.join(", ")}.`,
+      `Expected headers ${[...expectedHeaders, GOOGLE_SHEETS_ALIAS_HEADER].join(", ")} but received ${actualHeaders.join(", ")}.`,
     );
   }
 
@@ -128,7 +146,8 @@ export function normalizePersonnelRows(values: string[][]) {
     const name = trimCell(row[1]);
     const platoonCell = trimCell(row[2]);
     const designation = trimCell(row[3]);
-    const isBlank = !rank && !name && !platoonCell && !designation;
+    const alias = hasAliasColumn ? trimCell(row[4]) : "";
+    const isBlank = !rank && !name && !platoonCell && !designation && !alias;
 
     if (isBlank) {
       return;
@@ -170,6 +189,7 @@ export function normalizePersonnelRows(values: string[][]) {
       name,
       platoon,
       designation,
+      alias: alias || undefined,
     };
 
     personnel.push({

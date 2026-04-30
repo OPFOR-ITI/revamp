@@ -1,6 +1,7 @@
 import { PERSONNEL_SHEET_DEFAULT_RANGE } from "@/lib/constants";
 
 const GOOGLE_SHEETS_BASE_URL = "https://sheets.googleapis.com/v4/spreadsheets";
+const LEGACY_PERSONNEL_SHEET_RANGE = "Personnel!A:D";
 
 const googleSheetsValuesResponseSchema = {
   parse(json: unknown) {
@@ -47,14 +48,23 @@ function getRequiredEnv(name: string, fallback?: string) {
   return value;
 }
 
+function normalizePersonnelSheetRange(range: string) {
+  const trimmedRange = range.trim();
+
+  if (trimmedRange === LEGACY_PERSONNEL_SHEET_RANGE) {
+    return PERSONNEL_SHEET_DEFAULT_RANGE;
+  }
+
+  return trimmedRange;
+}
+
 export async function fetchPersonnelSheetValues() {
   const spreadsheetId = getRequiredEnv(
     "GOOGLE_SHEETS_SPREADSHEET_ID",
     "1bu2hgyqID8XNuH7iCzR5dtb1JRzzl5KsclODcqrUogU",
   );
-  const range = getRequiredEnv(
-    "GOOGLE_SHEETS_RANGE",
-    PERSONNEL_SHEET_DEFAULT_RANGE,
+  const range = normalizePersonnelSheetRange(
+    getRequiredEnv("GOOGLE_SHEETS_RANGE", PERSONNEL_SHEET_DEFAULT_RANGE),
   );
   const apiKey = getRequiredEnv("GOOGLE_SHEETS_API_KEY");
 
