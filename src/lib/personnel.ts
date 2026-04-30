@@ -89,7 +89,7 @@ export function createPersonnelKey(
 }
 
 export function formatDesignation(designation: string) {
-  return designation || "No designation";
+  return designation || "-";
 }
 
 function createPersonnelLabel(record: Omit<PersonnelRecord, "label">) {

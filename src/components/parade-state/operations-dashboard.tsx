@@ -306,10 +306,10 @@ function formatRecordPeriod(record: {
 function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
   return (
     <Badge
-      variant={affectsParadeState ? "default" : "outline"}
-      className={affectsParadeState ? "bg-emerald-800 text-white" : ""}
+      variant={affectsParadeState ? "outline" : "default"}
+      className={affectsParadeState ? "" : "bg-emerald-800 text-white"}
     >
-      {affectsParadeState ? "Out-of-Camp" : "In-Camp"}
+      {affectsParadeState ? "Out of Camp" : "In Camp"}
     </Badge>
   );
 }
@@ -1555,10 +1555,10 @@ function CurrentStateMobileCard({
           </p>
         </div>
         <Badge
-          variant={row.hasParadeStateImpact ? "default" : "outline"}
-          className={row.hasParadeStateImpact ? "bg-emerald-800 text-white" : ""}
+          variant={row.hasParadeStateImpact ? "outline" : "default"}
+          className={row.hasParadeStateImpact ? "" : "bg-emerald-800 text-white"}
         >
-          {row.hasParadeStateImpact ? "Impact" : "No impact"}
+          {row.hasParadeStateImpact ? "Out of Camp" : "In Camp"}
         </Badge>
       </div>
 
@@ -1622,10 +1622,10 @@ function RecordLogMobileCard({
         {isPermanentRecord(record) ? <Badge variant="outline">Permanent</Badge> : null}
         <Badge variant="outline">{getRecordTemporalBucket(record)}</Badge>
         <Badge
-          variant={record.affectParadeState ? "default" : "outline"}
-          className={record.affectParadeState ? "bg-emerald-800 text-white" : ""}
+          variant={record.affectParadeState ? "outline" : "default"}
+          className={record.affectParadeState ? "" : "bg-emerald-800 text-white"}
         >
-          {record.affectParadeState ? "Impact" : "No impact"}
+          {record.affectParadeState ? "Out of Camp" : "In Camp"}
         </Badge>
       </div>
 
@@ -2125,7 +2125,7 @@ export function OperationsDashboard({
                               <TableHead>Designation</TableHead>
                               <TableHead>Active statuses</TableHead>
                               <TableHead>Impact</TableHead>
-                              <TableHead>Record count</TableHead>
+                              {/* <TableHead>Record count</TableHead> */}
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -2164,19 +2164,19 @@ export function OperationsDashboard({
                                 </TableCell>
                                 <TableCell>
                                   <Badge
-                                    variant={row.hasParadeStateImpact ? "default" : "outline"}
+                                    variant={row.hasParadeStateImpact ? "outline" : "default"}
                                     className={
                                       row.hasParadeStateImpact
-                                        ? "bg-emerald-800 text-white"
-                                        : ""
+                                        ? ""
+                                        : "bg-emerald-800 text-white"
                                     }
                                   >
                                     {row.hasParadeStateImpact
-                                      ? "Impacts parade state"
-                                      : "No impact"}
+                                      ? "Out of Camp"
+                                      : "In Camp"}
                                   </Badge>
                                 </TableCell>
-                                <TableCell>{row.activeRecordCount}</TableCell>
+                                {/* <TableCell>{row.activeRecordCount}</TableCell> */}
                                 <TableCell className="text-right">
                                   <Button
                                     variant="outline"
@@ -2275,8 +2275,8 @@ export function OperationsDashboard({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All records</SelectItem>
-                          <SelectItem value="impact">Impact only</SelectItem>
-                          <SelectItem value="no-impact">No impact only</SelectItem>
+                          <SelectItem value="In Camp">Impact only</SelectItem>
+                          <SelectItem value="Out of Camp">No impact only</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -2369,14 +2369,14 @@ export function OperationsDashboard({
                                 </TableCell>
                                 <TableCell>
                                   <Badge
-                                    variant={record.affectParadeState ? "default" : "outline"}
+                                    variant={record.affectParadeState ? "outline" : "default"}
                                     className={
                                       record.affectParadeState
-                                        ? "bg-emerald-800 text-white"
-                                        : ""
+                                        ? ""
+                                        : "bg-emerald-800 text-white"
                                     }
                                   >
-                                    {record.affectParadeState ? "Impact" : "No impact"}
+                                    {record.affectParadeState ? "Out of Camp" : "In Camp"}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
