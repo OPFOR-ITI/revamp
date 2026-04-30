@@ -110,8 +110,17 @@ export function isEligibleForDuty({
 
   switch (dutyPreset) {
     case "CDO":
+      return (
+        normalizedDesignation === "PC" ||
+        normalizedRank === "LTA" ||
+        normalizedRank === "2LT"
+      );
     case "DOO":
-      return normalizedDesignation === "PC";
+      return (
+        normalizedDesignation === "PC" ||
+        normalizedRank === "LTA" ||
+        normalizedRank === "2LT"
+      );
     case "CDS":
       return normalizedDesignation === "PS";
     case "COS":

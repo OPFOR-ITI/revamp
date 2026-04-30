@@ -12,9 +12,12 @@ import {
   LogOut,
   Plus,
   RefreshCw,
+  Search,
   ScrollText,
   ShieldCheck,
+  SlidersHorizontal,
   UserRound,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1891,9 +1894,31 @@ export function OperationsDashboard({
     activeView === "current-state"
       ? "One row per serviceman with overlapping active statuses grouped together."
       : "Historical parade-state records with compact client-side filters.";
+  const hasRecordSearch = search.trim().length > 0;
+  const hasActiveRecordFilters =
+    hasRecordSearch ||
+    statusFilter !== "all" ||
+    platoonFilter !== "all" ||
+    impactFilter !== "all" ||
+    temporalFilter !== "all";
+  const activeRecordFilterCount = [
+    hasRecordSearch,
+    statusFilter !== "all",
+    platoonFilter !== "all",
+    impactFilter !== "all",
+    temporalFilter !== "all",
+  ].filter(Boolean).length;
   const nominalRollCount =
     isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
   const viewerInitials = getViewerInitials(viewer.name);
+
+  function clearRecordFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setPlatoonFilter("all");
+    setImpactFilter("all");
+    setTemporalFilter("all");
+  }
 
   return (
     <SidebarProvider
@@ -2210,96 +2235,153 @@ export function OperationsDashboard({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-4">
-                  <div className="grid gap-3 rounded-2xl border border-border bg-background/80 p-3 lg:grid-cols-[2fr,1fr,1fr,1fr,1fr]">
-                    <div className="grid gap-2">
-                      <Label htmlFor="record-search">Search by name</Label>
-                      <Input
-                        id="record-search"
-                        placeholder="Search rank or serviceman name"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                      />
+                  <div className="space-y-3 rounded-2xl border border-emerald-950/10 bg-background/85 p-3 shadow-sm shadow-emerald-950/5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-950/10 bg-white/80 px-2.5 py-1 font-medium text-zinc-700">
+                          <SlidersHorizontal className="size-3.5" />
+                          Filters
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-950/10 bg-white/80 text-zinc-700"
+                        >
+                          {filteredRecords.length} of {records.length} records
+                        </Badge>
+                        {hasActiveRecordFilters ? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-50 text-amber-900"
+                          >
+                            {activeRecordFilterCount} active
+                          </Badge>
+                        ) : (
+                          <span>Showing the full log</span>
+                        )}
+                      </div>
+
+                      {hasActiveRecordFilters ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearRecordFilters}
+                          className="h-8 px-2 text-xs text-zinc-600 hover:text-zinc-950"
+                        >
+                          <X className="size-3.5" />
+                          Clear
+                        </Button>
+                      ) : null}
                     </div>
 
-                    <div className="grid gap-2">
-                      <Label>Status</Label>
-                      <Select
-                        value={statusFilter}
-                        onValueChange={(value) =>
-                          setStatusFilter((value ?? "all") as Status | "all")
-                        }
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All statuses" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All statuses</SelectItem>
-                          {STATUS_VALUES.map((status) => (
-                            <SelectItem key={status} value={status}>
-                              {status}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.9fr)_repeat(4,minmax(0,0.9fr))]">
+                      <div className="grid gap-1.5">
+                        <Label
+                          htmlFor="record-search"
+                          className="text-[11px] uppercase tracking-[0.16em] text-zinc-500"
+                        >
+                          Search
+                        </Label>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            id="record-search"
+                            placeholder="Name, rank, platoon, status"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            className="h-9 rounded-lg border-emerald-950/10 bg-white pl-9"
+                          />
+                        </div>
+                      </div>
 
-                    <div className="grid gap-2">
-                      <Label>Platoon</Label>
-                      <Select
-                        value={platoonFilter}
-                        onValueChange={(value) => setPlatoonFilter(value ?? "all")}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All platoons" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All platoons</SelectItem>
-                          {platoonOptions.map((platoon) => (
-                            <SelectItem key={platoon} value={platoon}>
-                              {platoon}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          Status
+                        </Label>
+                        <Select
+                          value={statusFilter}
+                          onValueChange={(value) =>
+                            setStatusFilter((value ?? "all") as Status | "all")
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
+                            <SelectValue placeholder="All statuses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All statuses</SelectItem>
+                            {STATUS_VALUES.map((status) => (
+                              <SelectItem key={status} value={status}>
+                                {formatStatusLabel(status)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div className="grid gap-2">
-                      <Label>Impact</Label>
-                      <Select
-                        value={impactFilter}
-                        onValueChange={(value) =>
-                          setImpactFilter((value ?? "all") as ImpactFilter)
-                        }
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All records</SelectItem>
-                          <SelectItem value="In Camp">Impact only</SelectItem>
-                          <SelectItem value="Out of Camp">No impact only</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          Platoon
+                        </Label>
+                        <Select
+                          value={platoonFilter}
+                          onValueChange={(value) => setPlatoonFilter(value ?? "all")}
+                        >
+                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
+                            <SelectValue placeholder="All platoons" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All platoons</SelectItem>
+                            {platoonOptions.map((platoon) => (
+                              <SelectItem key={platoon} value={platoon}>
+                                {platoon}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div className="grid gap-2">
-                      <Label>Time bucket</Label>
-                      <Select
-                        value={temporalFilter}
-                        onValueChange={(value) =>
-                          setTemporalFilter((value ?? "all") as RecordTemporalFilter)
-                        }
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="All" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All records</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="future">Future</SelectItem>
-                          <SelectItem value="past">Past</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="grid gap-1.5">
+                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          Camp state
+                        </Label>
+                        <Select
+                          value={impactFilter}
+                          onValueChange={(value) =>
+                            setImpactFilter((value ?? "all") as ImpactFilter)
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
+                            <SelectValue placeholder="All records" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All records</SelectItem>
+                            <SelectItem value="impact">Out of camp</SelectItem>
+                            <SelectItem value="no-impact">In camp</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-1.5">
+                        <Label className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
+                          Period
+                        </Label>
+                        <Select
+                          value={temporalFilter}
+                          onValueChange={(value) =>
+                            setTemporalFilter((value ?? "all") as RecordTemporalFilter)
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full rounded-lg border-emerald-950/10 bg-white">
+                            <SelectValue placeholder="All records" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All records</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="future">Upcoming</SelectItem>
+                            <SelectItem value="past">Past</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
 
