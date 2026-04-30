@@ -206,7 +206,7 @@ const DUTY_FILTER_ITEMS: { label: string; key: DutyColorKey }[] = [
   { label: "DOO", key: "DOO" },
   { label: "CDS", key: "CDS" },
   { label: "COS", key: "COS" },
-  { label: "COS RESERVE", key: "COS RESERVE" },
+  { label: "COS RES", key: "COS RESERVE" },
   { label: "Custom", key: "CUSTOM" },
 ];
 
@@ -256,7 +256,7 @@ function DutyAssignmentButton({
   onClick: () => void;
 }) {
   const className = cn(
-    "grid gap-1 rounded-xl border px-2 py-2 text-left",
+    "grid gap-1 rounded-xl border px-[10px] py-[4px] text-left",
     canManageAssignments && "transition-colors hover:brightness-[0.98]",
     DUTY_COLOR_CLASSES[getDutyColorKey(assignment.dutyPreset)],
   );
@@ -294,7 +294,7 @@ function DutyAssignmentButton({
       className={className}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="truncate text-xs font-semibold uppercase tracking-[0.14em]">
+        <span className="truncate text-[9px] font-semibold uppercase tracking-[0.14em]">
           {assignment.dutyType}
         </span>
         <span className="shrink-0 text-[11px] font-semibold">
@@ -307,17 +307,15 @@ function DutyAssignmentButton({
             }),
           )} */}
         </span>
-      </div>
-      <span className="truncate text-sm font-medium">
-        {assignment.rank} {assignment.name}
-      </span>
-      <div className="flex items-center justify-between gap-2 text-[11px]">
         {assignment.isExtra ? (
-          <span className="rounded-full border border-current/20 px-1.5 py-0.5 font-medium uppercase tracking-[0.14em]">
+          <span className="rounded-full border border-current/20 px-1.5 text-[9px] uppercase text-red-500 bg-red-100">
             Extra
           </span>
         ) : null}
       </div>
+      <span className="truncate text-[11px] font-medium">
+        {assignment.rank} {assignment.name}
+      </span>
     </button>
   );
 }
@@ -1047,7 +1045,7 @@ export function DutyCalendarPage({
                   <div
                     key={day.dateKey}
                     className={cn(
-                      "flex min-h-36 flex-col gap-3 rounded-2xl border p-3 text-left",
+                      "flex min-h-20 flex-col gap-3 rounded-2xl border p-1 text-left",
                       canManageAssignments &&
                         "cursor-pointer transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
                       day.inCurrentMonth
@@ -1106,8 +1104,8 @@ export function DutyCalendarPage({
                           />
                         ))
                       ) : (
-                        <div className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-                          No duties assigned.
+                        <div className="rounded-xl border border-dashed border-border px-3 py-4 text-[14px] text-muted-foreground">
+                          NIL
                         </div>
                       )}
                     </div>
