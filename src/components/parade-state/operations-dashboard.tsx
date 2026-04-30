@@ -2201,13 +2201,13 @@ export function OperationsDashboard({
             {activeView === "current-state" ? (
               <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
                 <CardHeader className="border-b border-emerald-950/10">
-                  <CardTitle>Distinct Current State</CardTitle>
+                  <CardTitle>Active Satuses</CardTitle>
                   <CardDescription>
                     One row per serviceman with all currently active overlapping
                     statuses grouped together.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="pt-4">
+                <CardContent className="pt-[-8]">
                   {currentStateQuery === undefined ? (
                     <div className="space-y-3">
                       <Skeleton className="h-12 w-full rounded-xl" />
