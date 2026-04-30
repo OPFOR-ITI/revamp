@@ -952,11 +952,6 @@ export function DutyCalendarPage({
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
                 {format(visibleMonth, "MMMM yyyy")}
               </h2>
-            <CardDescription>
-              {canManageAssignments
-                ? "Click an empty day to assign a duty or select an existing assignment to edit it."
-                : ""}
-            </CardDescription>
             <DutyFilter activeFilters={activeFilters} onToggle={handleFilterToggle} />
           </div>
 
@@ -970,7 +965,6 @@ export function DutyCalendarPage({
               onClick={() => setVisibleMonth((current) => subMonths(current, 1))}
             >
               <ChevronLeft className="size-4" />
-              Previous
             </Button>
             <Button
               type="button"
@@ -979,14 +973,13 @@ export function DutyCalendarPage({
                 setVisibleMonth(startOfMonth(parseISO(getTodaySingaporeDateString())))
               }
             >
-              Today
+              This Month
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => setVisibleMonth((current) => addMonths(current, 1))}
             >
-              Next
               <ChevronRight className="size-4" />
             </Button>
             {canManageAssignments ? (
@@ -1004,6 +997,7 @@ export function DutyCalendarPage({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="h-8"
                 onClick={() => setPersonnelRefreshKey((value) => value + 1)}
                 disabled={isPersonnelLoading}
               >
@@ -1012,7 +1006,6 @@ export function DutyCalendarPage({
                 ) : (
                   <RotateCcw className="size-4" />
                 )}
-                Refresh
               </Button>
           </div>
         </CardHeader>

@@ -15,7 +15,7 @@ export default async function DutiesPage() {
         roles: user.roles,
       }}
       title="Duty Calendar"
-      description="Review the duty calendar and, where permitted, manage point-bearing duty assignments."
+      description="Click an empty day to assign a duty or select an existing assignment to edit it."
       navGroups={getPrimaryNavGroups({
         activeItem: "duty-calendar",
         roles: user.roles,
