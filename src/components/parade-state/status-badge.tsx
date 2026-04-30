@@ -33,6 +33,7 @@ const statusBadgeClasses: Record<Status, string> = {
   "EX LOUD NOISE ENVIRONMENT": "bg-slate-200 text-slate-900 ring-1 ring-slate-300",
   "EX LOUD NOISE VOCATION": "bg-slate-200 text-slate-900 ring-1 ring-slate-300",
   "EX OVERSEAS DEPLOYEMENT": "bg-slate-200 text-slate-900 ring-1 ring-slate-300",
+  "JAIL": "bg-slate-200 text-slate-900 ring-1 ring-slate-300",
   Others: "bg-violet-100 text-violet-950 ring-1 ring-violet-200",
 };
 

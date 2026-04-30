@@ -84,6 +84,7 @@ import {
   resolveDutyPoints,
   sanitizeDutyType,
   type DutyKind,
+  type DutyPreset,
 } from "@/lib/duties";
 import { PERSONNEL_ROUTE_PATH } from "@/lib/constants";
 import {
@@ -198,27 +199,49 @@ function PersonnelPreview({ personnel }: { personnel?: PersonnelRecord }) {
   );
 }
 
-function DutyLegend() {
+type DutyColorKey = DutyPreset | "CUSTOM";
+
+const DUTY_FILTER_ITEMS: { label: string; key: DutyColorKey }[] = [
+  { label: "CDO", key: "CDO" },
+  { label: "DOO", key: "DOO" },
+  { label: "CDS", key: "CDS" },
+  { label: "COS", key: "COS" },
+  { label: "COS RESERVE", key: "COS RESERVE" },
+  { label: "Custom", key: "CUSTOM" },
+];
+
+const ALL_DUTY_FILTER_KEYS = new Set<DutyColorKey>(
+  DUTY_FILTER_ITEMS.map((item) => item.key),
+);
+
+function DutyFilter({
+  activeFilters,
+  onToggle,
+}: {
+  activeFilters: Set<DutyColorKey>;
+  onToggle: (key: DutyColorKey) => void;
+}) {
   return (
     <div className="flex flex-wrap gap-2">
-      {[
-        { label: "CDO", key: "CDO" as const },
-        { label: "DOO", key: "DOO" as const },
-        { label: "CDS", key: "CDS" as const },
-        { label: "COS", key: "COS" as const },
-        { label: "COS RESERVE", key: "COS RESERVE" as const },
-        { label: "Custom", key: "CUSTOM" as const },
-      ].map((item) => (
-        <span
-          key={item.label}
-          className={cn(
-            "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
-            DUTY_COLOR_CLASSES[item.key],
-          )}
-        >
-          {item.label}
-        </span>
-      ))}
+      {DUTY_FILTER_ITEMS.map((item) => {
+        const isActive = activeFilters.has(item.key);
+
+        return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onToggle(item.key)}
+            className={cn(
+              "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+              isActive
+                ? DUTY_COLOR_CLASSES[item.key]
+                : "border-zinc-200 bg-zinc-50 text-zinc-400 line-through",
+            )}
+          >
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -783,6 +806,23 @@ export function DutyCalendarPage({
   const [selectedAssignment, setSelectedAssignment] =
     useState<DutyAssignmentDoc | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<Set<DutyColorKey>>(
+    () => new Set(ALL_DUTY_FILTER_KEYS),
+  );
+
+  function handleFilterToggle(key: DutyColorKey) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
 
   const gridStart = startOfWeek(startOfMonth(visibleMonth), { weekStartsOn: 1 });
   const gridEnd = endOfWeek(endOfMonth(visibleMonth), { weekStartsOn: 1 });
@@ -909,16 +949,21 @@ export function DutyCalendarPage({
       <Card className="border-emerald-950/10 bg-white/80">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <CardTitle>Monthly duty board</CardTitle>
+              <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
+                {format(visibleMonth, "MMMM yyyy")}
+              </h2>
             <CardDescription>
               {canManageAssignments
-                ? "All duty assignments are visible directly on the calendar. Click an empty day to assign a duty or select an existing assignment to edit it."
-                : "All duty assignments are visible directly on the calendar. This role has view-only access to the duty board."}
+                ? "Click an empty day to assign a duty or select an existing assignment to edit it."
+                : ""}
             </CardDescription>
-            <DutyLegend />
+            <DutyFilter activeFilters={activeFilters} onToggle={handleFilterToggle} />
           </div>
 
           <div className="flex flex-wrap gap-2">
+              {personnel.length ? (
+                <Badge variant="outline" className="h-8">{personnel.length} pax</Badge>
+              ) : null}
             <Button
               type="button"
               variant="outline"
@@ -955,28 +1000,7 @@ export function DutyCalendarPage({
             ) : (
               <Badge variant="outline">View only</Badge>
             )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
-                {format(visibleMonth, "MMMM yyyy")}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Week starts on Monday. Outside-month days remain visible for full-week planning.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {isPersonnelLoading ? (
-                <Badge variant="outline">Loading personnel</Badge>
-              ) : null}
-              {personnel.length ? (
-                <Badge variant="outline">{personnel.length} personnel loaded</Badge>
-              ) : null}
-              <Button
+            <Button
                 type="button"
                 variant="outline"
                 size="sm"
@@ -988,11 +1012,12 @@ export function DutyCalendarPage({
                 ) : (
                   <RotateCcw className="size-4" />
                 )}
-                Refresh personnel
+                Refresh
               </Button>
-            </div>
           </div>
+        </CardHeader>
 
+        <CardContent className="space-y-4">
           {personnelError ? (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               Personnel refresh failed: {personnelError} Existing assignments are
@@ -1020,76 +1045,82 @@ export function DutyCalendarPage({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2 md:grid-cols-7">
-              {dayGroups.map((day) => (
-                <div
-                  key={day.dateKey}
-                  className={cn(
-                    "flex min-h-36 flex-col gap-3 rounded-2xl border p-3 text-left",
-                    canManageAssignments &&
-                      "cursor-pointer transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
-                    day.inCurrentMonth
-                      ? "border-emerald-950/10 bg-white/70"
-                      : "border-zinc-200/80 bg-zinc-50/70 text-muted-foreground",
-                    day.isToday && "ring-2 ring-emerald-700/25",
-                  )}
-                  onClick={
-                    canManageAssignments
-                      ? () => openCreateDialog(day.dateKey)
-                      : undefined
-                  }
-                  role={canManageAssignments ? "button" : undefined}
-                  tabIndex={canManageAssignments ? 0 : undefined}
-                  onKeyDown={
-                    canManageAssignments
-                      ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            openCreateDialog(day.dateKey);
+              {dayGroups.map((day) => {
+                const visibleAssignments = day.assignments.filter((a) =>
+                  activeFilters.has(getDutyColorKey(a.dutyPreset)),
+                );
+
+                return (
+                  <div
+                    key={day.dateKey}
+                    className={cn(
+                      "flex min-h-36 flex-col gap-3 rounded-2xl border p-3 text-left",
+                      canManageAssignments &&
+                        "cursor-pointer transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
+                      day.inCurrentMonth
+                        ? "border-emerald-950/10 bg-white/70"
+                        : "border-zinc-200/80 bg-zinc-50/70 text-muted-foreground",
+                      day.isToday && "ring-2 ring-emerald-700/25",
+                    )}
+                    onClick={
+                      canManageAssignments
+                        ? () => openCreateDialog(day.dateKey)
+                        : undefined
+                    }
+                    role={canManageAssignments ? "button" : undefined}
+                    tabIndex={canManageAssignments ? 0 : undefined}
+                    onKeyDown={
+                      canManageAssignments
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openCreateDialog(day.dateKey);
+                            }
                           }
-                        }
-                      : undefined
-                  }
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "inline-flex size-8 items-center justify-center rounded-full text-sm font-semibold",
-                          day.isToday
-                            ? "bg-emerald-800 text-white"
-                            : "bg-emerald-950/[0.05] text-zinc-950",
-                        )}
-                      >
-                        {format(day.date, "d")}
-                      </span>
-                      <span className="text-xs font-medium uppercase tracking-[0.16em]">
-                        {format(day.date, "MMM")}
+                        : undefined
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex size-8 items-center justify-center rounded-full text-sm font-semibold",
+                            day.isToday
+                              ? "bg-emerald-800 text-white"
+                              : "bg-emerald-950/[0.05] text-zinc-950",
+                          )}
+                        >
+                          {format(day.date, "d")}
+                        </span>
+                        <span className="text-xs font-medium uppercase tracking-[0.16em]">
+                          {format(day.date, "MMM")}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {visibleAssignments.length}
+                        {visibleAssignments.length === 1 ? " duty" : " duties"}
                       </span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {day.assignments.length}
-                      {day.assignments.length === 1 ? " duty" : " duties"}
-                    </span>
-                  </div>
 
-                  <div className="grid gap-2">
-                    {day.assignments.length ? (
-                      day.assignments.map((assignment) => (
-                        <DutyAssignmentButton
-                          key={assignment._id}
-                          assignment={assignment}
-                          canManageAssignments={canManageAssignments}
-                          onClick={() => openEditDialog(assignment)}
-                        />
-                      ))
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-                        No duties assigned.
-                      </div>
-                    )}
+                    <div className="grid gap-2">
+                      {visibleAssignments.length ? (
+                        visibleAssignments.map((assignment) => (
+                          <DutyAssignmentButton
+                            key={assignment._id}
+                            assignment={assignment}
+                            canManageAssignments={canManageAssignments}
+                            onClick={() => openEditDialog(assignment)}
+                          />
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                          No duties assigned.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

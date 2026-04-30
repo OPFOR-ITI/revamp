@@ -29,6 +29,7 @@ export const STATUS_DEFINITIONS = [
   { value: "EX LOUD NOISE ENVIRONMENT", affectsParadeState: false },
   { value: "EX LOUD NOISE VOCATION", affectsParadeState: false },
   { value: "EX OVERSEAS DEPLOYEMENT", affectsParadeState: false },
+  { value: "JAIL", affectsParadeState: true },
   { value: "Others", affectsParadeState: false },
 ] as const;
 
@@ -49,6 +50,8 @@ export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
   "DB",
   "SEND OUT",
   "STAY OUT",
+  "MA",
+  "JAIL",
 ];
 
 type StatusRecordPeriodMode = "standard" | "fixed-duration";
@@ -79,6 +82,13 @@ const STATUS_RECORD_PERIOD_CONFIGS: Partial<
     showEndDateField: false,
   },
   "STAY OUT": {
+    mode: "fixed-duration",
+    fixedDurationDays: 1,
+    showPermanentStatusToggle: false,
+    showDurationDaysField: false,
+    showEndDateField: false,
+  },
+  "MA": {
     mode: "fixed-duration",
     fixedDurationDays: 1,
     showPermanentStatusToggle: false,
