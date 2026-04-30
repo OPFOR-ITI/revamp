@@ -16,9 +16,7 @@ type EnsureCurrentUserOptions = {
   requirePermission?: AppPermission;
 };
 
-export function normalizeAppUser<T extends { role?: string; roles?: string[] }>(
-  appUser: T,
-) {
+export function normalizeAppUser<T extends { roles: string[] }>(appUser: T) {
   return {
     ...appUser,
     roles: resolveUserRoles(appUser),
@@ -89,7 +87,6 @@ export const syncCurrentUser = mutation({
       authUserId: authUser._id,
       email,
       name,
-      role: "operator",
       roles: ["operator"],
       approvalStatus: "pending",
       createdAt: now,

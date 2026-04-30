@@ -8,14 +8,11 @@ export default defineSchema({
     authUserId: v.string(),
     email: v.string(),
     name: v.string(),
-    role: v.optional(v.union(v.literal("admin"), v.literal("operator"))),
-    roles: v.optional(
-      v.array(
-        v.union(
-          v.literal("admin"),
-          v.literal("operator"),
-          v.literal("dutyAdmin"),
-        ),
+    roles: v.array(
+      v.union(
+        v.literal("admin"),
+        v.literal("operator"),
+        v.literal("dutyAdmin"),
       ),
     ),
     approvalStatus: v.union(

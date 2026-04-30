@@ -25,8 +25,7 @@ const ROLE_PERMISSIONS: Record<UserRole, readonly AppPermission[]> = {
 };
 
 type UserRoleSource = {
-  role?: string | null;
-  roles?: readonly string[] | null;
+  roles: readonly string[];
 };
 
 export function isUserRole(value: string): value is UserRole {
@@ -40,14 +39,10 @@ export function getUserRoleLabel(role: UserRole) {
 export function resolveUserRoles(user: UserRoleSource): UserRole[] {
   const nextRoles = new Set<UserRole>();
 
-  for (const role of user.roles ?? []) {
+  for (const role of user.roles) {
     if (isUserRole(role)) {
       nextRoles.add(role);
     }
-  }
-
-  if (!nextRoles.size && user.role && isUserRole(user.role)) {
-    nextRoles.add(user.role);
   }
 
   return ROLE_ORDER.filter((role) => nextRoles.has(role));

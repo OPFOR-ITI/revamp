@@ -85,7 +85,6 @@ export const updateUserAccess = mutation({
 
     const now = Date.now();
     await ctx.db.patch(args.appUserId, {
-      role: undefined,
       roles: args.roles,
       approvalStatus: args.approvalStatus,
       approvedAt:

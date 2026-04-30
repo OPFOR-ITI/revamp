@@ -67,7 +67,7 @@ export function getPrimaryNavGroups({
       items: [
         {
           id: "parade-state",
-          label: "Parade Report",
+          label: "Parade State",
           href: "/parade-state",
           icon: "report",
           active: activeItem === "parade-state",
