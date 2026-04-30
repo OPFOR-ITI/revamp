@@ -65,3 +65,6 @@ Internal Next.js + Convex app for managing parade-state records against a read-o
 - `pnpm dev` starts Next.js and Convex together.
 - `pnpm lint` runs ESLint.
 - `pnpm typecheck` runs TypeScript type checking.
+- `pnpm exec convex dev` runs convex dev entity
+- `pnpm dev:web` runs next.js web entity
+- `npx convex deploy` update convex sync

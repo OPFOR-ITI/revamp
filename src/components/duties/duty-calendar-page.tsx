@@ -222,16 +222,17 @@ type DutyColorKey = DutyPreset | "CUSTOM";
 
 const DUTY_FILTER_ITEMS: { label: string; key: DutyColorKey }[] = [
   { label: "CDO", key: "CDO" },
-  { label: "DOO", key: "DOO" },
   { label: "CDS", key: "CDS" },
   { label: "COS", key: "COS" },
   { label: "COS RES", key: "COS RESERVE" },
+  { label: "DOO", key: "DOO" },
   { label: "Custom", key: "CUSTOM" },
 ];
 
 const ALL_DUTY_FILTER_KEYS = new Set<DutyColorKey>(
   DUTY_FILTER_ITEMS.map((item) => item.key),
 );
+const DEFAULT_DUTY_FILTER_KEYS = new Set<DutyColorKey>(["CDO", "CDS", "COS"]);
 
 const DUTY_DOT_BG: Record<DutyColorKey, string> = {
   CDO: "bg-cyan-500",
@@ -835,7 +836,7 @@ export function DutyCalendarPage({
     useState<DutyAssignmentDoc | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<DutyColorKey>>(
-    () => new Set(ALL_DUTY_FILTER_KEYS),
+    () => new Set(DEFAULT_DUTY_FILTER_KEYS),
   );
   const scrollPositionRef = useRef(0);
 
