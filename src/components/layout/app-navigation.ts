@@ -1,4 +1,5 @@
 import type { UserRole } from "@/lib/constants";
+import { hasPermission } from "@/lib/access-control";
 
 export type AppNavIcon =
   | "current-state"
@@ -31,14 +32,16 @@ export type AppNavGroup = {
 
 export function getPrimaryNavGroups({
   activeItem,
-  role,
+  roles = [],
 }: {
   activeItem: AppNavItemId;
-  role?: UserRole;
+  roles?: UserRole[];
 }): AppNavGroup[] {
-  const groups: AppNavGroup[] = [
-    {
-      label: "Parade State",
+  const groups: AppNavGroup[] = [];
+
+  if (hasPermission(roles, "statusRecords.manage")) {
+    groups.push({
+      label: "Status Tracking",
       items: [
         {
           id: "current-state",
@@ -54,16 +57,27 @@ export function getPrimaryNavGroups({
           icon: "record-log",
           active: activeItem === "record-log",
         },
+      ],
+    });
+  }
+
+  if (hasPermission(roles, "paradeReport.view")) {
+    groups.push({
+      label: "Parade State",
+      items: [
         {
           id: "parade-state",
-          label: "Parade State",
+          label: "Parade Report",
           href: "/parade-state",
           icon: "report",
           active: activeItem === "parade-state",
         },
       ],
-    },
-    {
+    });
+  }
+
+  if (hasPermission(roles, "duties.view")) {
+    groups.push({
       label: "Duty",
       items: [
         {
@@ -74,16 +88,16 @@ export function getPrimaryNavGroups({
           active: activeItem === "duty-calendar",
         },
       ],
-    },
-  ];
+    });
+  }
 
-  if (role === "admin") {
+  if (hasPermission(roles, "userManagement.manage")) {
     groups.push({
       label: "Admin",
       items: [
         {
           id: "user-approvals",
-          label: "User approvals",
+          label: "User management",
           href: "/admin/users",
           icon: "approvals",
           active: activeItem === "user-approvals",

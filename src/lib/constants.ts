@@ -143,7 +143,7 @@ export function isPermanentRecord(record: {
   return record.isPermanent ?? !record.endDate;
 }
 
-export const USER_ROLE_VALUES = ["admin", "operator"] as const;
+export const USER_ROLE_VALUES = ["admin", "operator", "dutyAdmin"] as const;
 export type UserRole = (typeof USER_ROLE_VALUES)[number];
 
 export const APPROVAL_STATUS_VALUES = [

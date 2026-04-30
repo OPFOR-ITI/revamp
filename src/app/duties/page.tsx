@@ -1,26 +1,29 @@
 import { DutyCalendarPage } from "@/components/duties/duty-calendar-page";
 import { getPrimaryNavGroups } from "@/components/layout/app-navigation";
 import { AppSidebarShell } from "@/components/layout/app-sidebar-shell";
-import { requireApprovedUser } from "@/lib/auth-guards";
+import { hasPermission } from "@/lib/access-control";
+import { requireApprovedUserWithPermission } from "@/lib/auth-guards";
 
 export default async function DutiesPage() {
-  const user = await requireApprovedUser();
+  const user = await requireApprovedUserWithPermission("duties.view");
 
   return (
     <AppSidebarShell
       viewer={{
         name: user.name,
         email: user.email,
-        role: user.role,
+        roles: user.roles,
       }}
       title="Duty Calendar"
-      description="Schedule duties by day, enforce eligibility rules, and manage point-bearing assignments in one calendar view."
+      description="Review the duty calendar and, where permitted, manage point-bearing duty assignments."
       navGroups={getPrimaryNavGroups({
         activeItem: "duty-calendar",
-        role: user.role,
+        roles: user.roles,
       })}
     >
-      <DutyCalendarPage />
+      <DutyCalendarPage
+        canManageAssignments={hasPermission(user.roles, "duties.manage")}
+      />
     </AppSidebarShell>
   );
 }

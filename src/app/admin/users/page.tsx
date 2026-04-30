@@ -1,4 +1,4 @@
-import { PendingUsersTable } from "@/components/admin/pending-users-table";
+import { UserManagementTable } from "@/components/admin/pending-users-table";
 import { getPrimaryNavGroups } from "@/components/layout/app-navigation";
 import { AppSidebarShell } from "@/components/layout/app-sidebar-shell";
 import { requireAdminUser } from "@/lib/auth-guards";
@@ -11,16 +11,16 @@ export default async function AdminUsersPage() {
       viewer={{
         name: user.name,
         email: user.email,
-        role: user.role,
+        roles: user.roles,
       }}
-      title="User approvals"
-      description="Approve or reject signed-up operators before they can access the operations workspace."
+      title="User Management"
+      description="Approve access, review account status, and assign one or more roles from a single admin screen."
       navGroups={getPrimaryNavGroups({
         activeItem: "user-approvals",
-        role: user.role,
+        roles: user.roles,
       })}
     >
-      <PendingUsersTable />
+      <UserManagementTable />
     </AppSidebarShell>
   );
 }

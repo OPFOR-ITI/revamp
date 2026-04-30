@@ -104,10 +104,6 @@ function dateToString(value: Date) {
   return format(value, "yyyy-MM-dd");
 }
 
-function formatPointsLabel(points: number) {
-  return `${Number.isInteger(points) ? points.toFixed(0) : points.toFixed(1)} pt`;
-}
-
 function getDutyTypeFromForm(values: DutyAssignmentFormData) {
   const dutyPreset = getDutyPresetFromKind(values.dutyKind);
 
@@ -229,11 +225,42 @@ function DutyLegend() {
 
 function DutyAssignmentButton({
   assignment,
+  canManageAssignments,
   onClick,
 }: {
   assignment: DutyAssignmentDoc;
+  canManageAssignments: boolean;
   onClick: () => void;
 }) {
+  const className = cn(
+    "grid gap-1 rounded-xl border px-2 py-2 text-left",
+    canManageAssignments && "transition-colors hover:brightness-[0.98]",
+    DUTY_COLOR_CLASSES[getDutyColorKey(assignment.dutyPreset)],
+  );
+
+  if (!canManageAssignments) {
+    return (
+      <div className={className}>
+        <div className="flex items-start justify-between gap-2">
+          <span className="truncate text-xs font-semibold uppercase tracking-[0.14em]">
+            {assignment.dutyType}
+          </span>
+          <span className="shrink-0 text-[11px] font-semibold" />
+        </div>
+        <span className="truncate text-sm font-medium">
+          {assignment.rank} {assignment.name}
+        </span>
+        <div className="flex items-center justify-between gap-2 text-[11px]">
+          {assignment.isExtra ? (
+            <span className="rounded-full border border-current/20 px-1.5 py-0.5 font-medium uppercase tracking-[0.14em]">
+              Extra
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -241,10 +268,7 @@ function DutyAssignmentButton({
         event.stopPropagation();
         onClick();
       }}
-      className={cn(
-        "grid gap-1 rounded-xl border px-2 py-2 text-left transition-colors hover:brightness-[0.98]",
-        DUTY_COLOR_CLASSES[getDutyColorKey(assignment.dutyPreset)],
-      )}
+      className={className}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="truncate text-xs font-semibold uppercase tracking-[0.14em]">
@@ -743,7 +767,11 @@ function DutyAssignmentDialog({
   );
 }
 
-export function DutyCalendarPage() {
+export function DutyCalendarPage({
+  canManageAssignments,
+}: {
+  canManageAssignments: boolean;
+}) {
   const [personnel, setPersonnel] = useState<PersonnelRecord[]>([]);
   const [personnelError, setPersonnelError] = useState<string | null>(null);
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
@@ -817,7 +845,8 @@ export function DutyCalendarPage() {
     };
   }, [personnelRefreshKey]);
 
-  const canManageAssignments =
+  const canOpenAssignmentEditor =
+    canManageAssignments &&
     !isPersonnelLoading && !personnelError && personnel.length > 0;
 
   const assignmentsByDate = new Map<string, DutyAssignmentDoc[]>();
@@ -847,6 +876,10 @@ export function DutyCalendarPage() {
 
   function openCreateDialog(dateOfDuty: string) {
     if (!canManageAssignments) {
+      return;
+    }
+
+    if (!canOpenAssignmentEditor) {
       toast.error("Personnel must load successfully before assignments can be managed.");
       return;
     }
@@ -858,6 +891,10 @@ export function DutyCalendarPage() {
 
   function openEditDialog(assignment: DutyAssignmentDoc) {
     if (!canManageAssignments) {
+      return;
+    }
+
+    if (!canOpenAssignmentEditor) {
       toast.error("Personnel must load successfully before assignments can be managed.");
       return;
     }
@@ -874,9 +911,9 @@ export function DutyCalendarPage() {
           <div className="space-y-2">
             <CardTitle>Monthly duty board</CardTitle>
             <CardDescription>
-              All duty assignments are visible directly on the calendar. Click
-              an empty day to assign a duty or select an existing assignment to
-              edit it.
+              {canManageAssignments
+                ? "All duty assignments are visible directly on the calendar. Click an empty day to assign a duty or select an existing assignment to edit it."
+                : "All duty assignments are visible directly on the calendar. This role has view-only access to the duty board."}
             </CardDescription>
             <DutyLegend />
           </div>
@@ -907,13 +944,17 @@ export function DutyCalendarPage() {
               Next
               <ChevronRight className="size-4" />
             </Button>
-            <Button
-              type="button"
-              onClick={() => openCreateDialog(getTodaySingaporeDateString())}
-              disabled={!canManageAssignments}
-            >
-              Assign duty
-            </Button>
+            {canManageAssignments ? (
+              <Button
+                type="button"
+                onClick={() => openCreateDialog(getTodaySingaporeDateString())}
+                disabled={!canOpenAssignmentEditor}
+              >
+                Assign duty
+              </Button>
+            ) : (
+              <Badge variant="outline">View only</Badge>
+            )}
           </div>
         </CardHeader>
 
@@ -982,22 +1023,32 @@ export function DutyCalendarPage() {
               {dayGroups.map((day) => (
                 <div
                   key={day.dateKey}
-                  onClick={() => openCreateDialog(day.dateKey)}
                   className={cn(
-                    "flex min-h-36 cursor-pointer flex-col gap-3 rounded-2xl border p-3 text-left transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
+                    "flex min-h-36 flex-col gap-3 rounded-2xl border p-3 text-left",
+                    canManageAssignments &&
+                      "cursor-pointer transition-colors hover:border-emerald-700/30 hover:bg-emerald-950/[0.025]",
                     day.inCurrentMonth
                       ? "border-emerald-950/10 bg-white/70"
                       : "border-zinc-200/80 bg-zinc-50/70 text-muted-foreground",
                     day.isToday && "ring-2 ring-emerald-700/25",
                   )}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      openCreateDialog(day.dateKey);
-                    }
-                  }}
+                  onClick={
+                    canManageAssignments
+                      ? () => openCreateDialog(day.dateKey)
+                      : undefined
+                  }
+                  role={canManageAssignments ? "button" : undefined}
+                  tabIndex={canManageAssignments ? 0 : undefined}
+                  onKeyDown={
+                    canManageAssignments
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openCreateDialog(day.dateKey);
+                          }
+                        }
+                      : undefined
+                  }
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -1027,6 +1078,7 @@ export function DutyCalendarPage() {
                         <DutyAssignmentButton
                           key={assignment._id}
                           assignment={assignment}
+                          canManageAssignments={canManageAssignments}
                           onClick={() => openEditDialog(assignment)}
                         />
                       ))
@@ -1043,20 +1095,22 @@ export function DutyCalendarPage() {
         </CardContent>
       </Card>
 
-      <DutyAssignmentDialog
-        key={`${selectedAssignment?._id ?? selectedDate}-${isDialogOpen ? "open" : "closed"}`}
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          setIsDialogOpen(open);
+      {canManageAssignments ? (
+        <DutyAssignmentDialog
+          key={`${selectedAssignment?._id ?? selectedDate}-${isDialogOpen ? "open" : "closed"}`}
+          open={isDialogOpen}
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
 
-          if (!open) {
-            setSelectedAssignment(null);
-          }
-        }}
-        assignment={selectedAssignment}
-        initialDate={selectedDate}
-        personnel={personnel}
-      />
+            if (!open) {
+              setSelectedAssignment(null);
+            }
+          }}
+          assignment={selectedAssignment}
+          initialDate={selectedDate}
+          personnel={personnel}
+        />
+      ) : null}
     </>
   );
 }

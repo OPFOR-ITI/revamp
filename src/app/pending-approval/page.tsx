@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { AppNavGroup } from "@/components/layout/app-navigation";
 import { PendingApprovalPanel } from "@/components/auth/pending-approval-panel";
 import { AppSidebarShell } from "@/components/layout/app-sidebar-shell";
+import { getDefaultAuthorizedPath } from "@/lib/access-control";
 import { getCurrentAppUserOrNull } from "@/lib/auth-guards";
 
 export default async function PendingApprovalPage() {
@@ -13,7 +14,7 @@ export default async function PendingApprovalPage() {
   }
 
   if (user.approvalStatus === "approved") {
-    redirect("/");
+    redirect(getDefaultAuthorizedPath(user.roles) ?? "/");
   }
 
   const navGroups: AppNavGroup[] = [

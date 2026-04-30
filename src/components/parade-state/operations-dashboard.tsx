@@ -125,6 +125,7 @@ import {
   getTodaySingaporeDayIndex,
 } from "@/lib/date";
 import { authClient } from "@/lib/auth-client";
+import { hasPermission } from "@/lib/access-control";
 import {
   formatDesignation,
   personnelRecordSchema,
@@ -1736,7 +1737,7 @@ export function OperationsDashboard({
   viewer: {
     name: string;
     email: string;
-    role: UserRole;
+    roles: UserRole[];
   };
 }) {
   const router = useRouter();
@@ -1916,7 +1917,7 @@ export function OperationsDashboard({
             groups={getPrimaryNavGroups({
               activeItem:
                 activeView === "current-state" ? "current-state" : "record-log",
-              role: viewer.role,
+              roles: viewer.roles,
             })}
             onItemSelect={(item) => {
               if (item.id === "current-state" || item.id === "record-log") {
@@ -1982,14 +1983,14 @@ export function OperationsDashboard({
                         {nominalRollCount}
                       </span>
                     </DropdownMenuItem>
-                    {viewer.role === "admin" ? (
+                    {hasPermission(viewer.roles, "userManagement.manage") ? (
                       <DropdownMenuItem
                         onClick={() => {
                           router.push("/admin/users");
                         }}
                       >
                         <ShieldCheck className="size-4" />
-                        User approvals
+                        User management
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem

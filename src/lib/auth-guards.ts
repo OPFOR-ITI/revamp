@@ -1,6 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { api } from "../../convex/_generated/api";
+import {
+  getDefaultAuthorizedPath,
+  hasPermission,
+  type AppPermission,
+} from "@/lib/access-control";
 import { fetchAuthQuery, isAuthenticated } from "@/lib/auth-server";
 
 export async function getCurrentAppUserOrNull() {
@@ -25,7 +30,7 @@ export async function redirectIfSignedIn() {
   }
 
   if (user.approvalStatus === "approved") {
-    redirect("/");
+    redirect(getDefaultAuthorizedPath(user.roles) ?? "/pending-approval");
   }
 
   redirect("/pending-approval");
@@ -47,12 +52,18 @@ export async function requireApprovedUser() {
   return user;
 }
 
-export async function requireAdminUser() {
+export async function requireApprovedUserWithPermission(
+  permission: AppPermission,
+) {
   const user = await requireApprovedUser();
 
-  if (user.role !== "admin") {
-    redirect("/");
+  if (!hasPermission(user.roles, permission)) {
+    redirect(getDefaultAuthorizedPath(user.roles) ?? "/");
   }
 
   return user;
+}
+
+export async function requireAdminUser() {
+  return await requireApprovedUserWithPermission("userManagement.manage");
 }

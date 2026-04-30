@@ -1,12 +1,12 @@
 import { OperationsDashboard } from "@/components/parade-state/operations-dashboard";
-import { requireApprovedUser } from "@/lib/auth-guards";
+import { requireApprovedUserWithPermission } from "@/lib/auth-guards";
 
 export default async function HomePage({
   searchParams,
 }: {
   searchParams: Promise<{ view?: string | string[] }>;
 }) {
-  const user = await requireApprovedUser();
+  const user = await requireApprovedUserWithPermission("statusRecords.manage");
   const params = await searchParams;
   const view = Array.isArray(params.view) ? params.view[0] : params.view;
   const initialView = view === "record-log" ? "record-log" : "current-state";
@@ -18,7 +18,7 @@ export default async function HomePage({
       viewer={{
         name: user.name,
         email: user.email,
-        role: user.role,
+        roles: user.roles,
       }}
     />
   );

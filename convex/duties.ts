@@ -164,7 +164,10 @@ export const listAssignmentsForRange = query({
     toDate: v.string(),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "duties.view",
+    });
 
     const fromDay = validateDateOfDuty(args.fromDate);
     const toDay = validateDateOfDuty(args.toDate);
@@ -198,6 +201,7 @@ export const createAssignment = mutation({
   handler: async (ctx, args) => {
     const { appUser, authUser } = await ensureCurrentUser(ctx, {
       requireApproved: true,
+      requirePermission: "duties.manage",
     });
     const now = Date.now();
     const dutyDay = validateDateOfDuty(args.dateOfDuty);
@@ -261,7 +265,10 @@ export const updateAssignment = mutation({
     isExtra: v.boolean(),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "duties.manage",
+    });
 
     const existing = await ctx.db.get(args.assignmentId);
 
@@ -317,7 +324,10 @@ export const deleteAssignment = mutation({
     assignmentId: v.id("dutyAssignments"),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "duties.manage",
+    });
 
     const existing = await ctx.db.get(args.assignmentId);
 

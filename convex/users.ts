@@ -4,6 +4,8 @@ import type {
   QueryCtx,
 } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
+import type { AppPermission } from "../src/lib/access-control";
+import { hasPermission, resolveUserRoles } from "../src/lib/access-control";
 
 import { authComponent } from "./auth";
 
@@ -11,8 +13,17 @@ type AnyUserCtx = MutationCtx | QueryCtx;
 
 type EnsureCurrentUserOptions = {
   requireApproved?: boolean;
-  requireAdmin?: boolean;
+  requirePermission?: AppPermission;
 };
+
+export function normalizeAppUser<T extends { role?: string; roles?: string[] }>(
+  appUser: T,
+) {
+  return {
+    ...appUser,
+    roles: resolveUserRoles(appUser),
+  };
+}
 
 export async function ensureCurrentUser(
   ctx: AnyUserCtx,
@@ -34,11 +45,16 @@ export async function ensureCurrentUser(
     throw new ConvexError("Your account is not approved for operations access.");
   }
 
-  if (options.requireAdmin && appUser.role !== "admin") {
-    throw new ConvexError("Admin access is required for this action.");
+  const roles = resolveUserRoles(appUser);
+
+  if (
+    options.requirePermission &&
+    !hasPermission(roles, options.requirePermission)
+  ) {
+    throw new ConvexError("You do not have access to perform this action.");
   }
 
-  return { authUser, appUser };
+  return { authUser, appUser, roles };
 }
 
 export const syncCurrentUser = mutation({
@@ -74,6 +90,7 @@ export const syncCurrentUser = mutation({
       email,
       name,
       role: "operator",
+      roles: ["operator"],
       approvalStatus: "pending",
       createdAt: now,
       updatedAt: now,
@@ -89,7 +106,7 @@ export const getMe = query({
     const { appUser, authUser } = await ensureCurrentUser(ctx);
 
     return {
-      ...appUser,
+      ...normalizeAppUser(appUser),
       authEmail: authUser.email,
       authName: authUser.name,
     };

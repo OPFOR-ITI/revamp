@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import type { AppNavGroup } from "@/components/layout/app-navigation";
 import { AppSidebarNav } from "@/components/layout/app-sidebar-nav";
 import { authClient } from "@/lib/auth-client";
+import { formatUserRolesLabel } from "@/lib/access-control";
 import type { UserRole } from "@/lib/constants";
 
 function getViewerInitials(name: string) {
@@ -59,7 +60,7 @@ export function AppSidebarShell({
   viewer: {
     name: string;
     email: string;
-    role?: UserRole;
+    roles?: UserRole[];
   };
   title: string;
   description?: string;
@@ -70,6 +71,8 @@ export function AppSidebarShell({
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const viewerInitials = getViewerInitials(viewer.name);
+  const rolesLabel =
+    viewer.roles && viewer.roles.length ? formatUserRolesLabel(viewer.roles) : null;
 
   async function handleSignOut() {
     setIsSigningOut(true);
@@ -151,15 +154,15 @@ export function AppSidebarShell({
                       </div>
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
-                  {viewer.role ? (
+                  {rolesLabel ? (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
                         <DropdownMenuItem disabled>
                           <ShieldCheck className="size-4" />
-                          Role
+                          Roles
                           <span className="ml-auto text-xs text-muted-foreground">
-                            {viewer.role}
+                            {rolesLabel}
                           </span>
                         </DropdownMenuItem>
                       </DropdownMenuGroup>
@@ -217,12 +220,12 @@ export function AppSidebarShell({
                   <h1 className="text-lg font-semibold tracking-tight text-zinc-950">
                     {title}
                   </h1>
-                  {viewer.role ? (
+                  {rolesLabel ? (
                     <Badge
                       variant="outline"
                       className="border-emerald-950/10 bg-white/70 text-zinc-700"
                     >
-                      {viewer.role}
+                      {rolesLabel}
                     </Badge>
                   ) : null}
                 </div>

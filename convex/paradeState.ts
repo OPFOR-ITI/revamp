@@ -172,6 +172,7 @@ export const createRecord = mutation({
   handler: async (ctx, args) => {
     const { appUser, authUser } = await ensureCurrentUser(ctx, {
       requireApproved: true,
+      requirePermission: "statusRecords.manage",
     });
     const { startDay, isPermanent, endDate, endDay } = resolveRecordDates(
       args.status,
@@ -225,7 +226,10 @@ export const updateRecord = mutation({
     remarks: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const existing = await ctx.db.get(args.recordId);
     if (!existing) {
@@ -268,7 +272,10 @@ export const adjustEndDate = mutation({
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const existing = await ctx.db.get(args.recordId);
     if (!existing) {
@@ -299,7 +306,10 @@ export const deleteRecord = mutation({
     recordId: v.id("paradeStateRecords"),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const existing = await ctx.db.get(args.recordId);
     if (!existing) {
@@ -313,7 +323,10 @@ export const deleteRecord = mutation({
 export const listCurrentState = query({
   args: {},
   handler: async (ctx) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const todayDay = getTodaySingaporeDayIndex();
     const permanentRecords = await ctx.db
@@ -376,7 +389,10 @@ export const listActiveRecordsForDate = query({
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const targetDay = dateStringToDayIndex(args.date);
     const permanentRecords = await ctx.db
@@ -398,7 +414,10 @@ export const listActiveRecordsForDate = query({
 export const listRecordLog = query({
   args: {},
   handler: async (ctx) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const records = await ctx.db
       .query("paradeStateRecords")
@@ -415,7 +434,10 @@ export const listRecordsForPersonnel = query({
     personnelKey: v.string(),
   },
   handler: async (ctx, args) => {
-    await ensureCurrentUser(ctx, { requireApproved: true });
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
 
     const records = await ctx.db
       .query("paradeStateRecords")
