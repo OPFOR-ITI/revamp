@@ -52,7 +52,13 @@ export function PersonnelCombobox({
       </PopoverTrigger>
 
       <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-0">
-        <Command>
+        <Command
+          filter={(value, search) => {
+            const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+            const lowerValue = value.toLowerCase();
+            return words.every((word) => lowerValue.includes(word)) ? 1 : 0;
+          }}
+        >
           <CommandInput placeholder="Search rank, name, platoon, or designation..." />
           <CommandList>
             <CommandEmpty>No matching personnel found.</CommandEmpty>
