@@ -1681,9 +1681,9 @@ function DeleteRecordDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Delete Record</DialogTitle>
+          <DialogTitle>Erase Record</DialogTitle>
           <DialogDescription>
-            This permanently removes the selected status log entry.
+            This <strong>PERMANENTLY erases</strong> the selected status log entry!
           </DialogDescription>
         </DialogHeader>
 
@@ -1719,7 +1719,7 @@ function DeleteRecordDialog({
                 className="w-full sm:w-auto"
               >
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                Delete record
+                Erase record
               </Button>
             </DialogFooter>
           </div>
@@ -1750,7 +1750,7 @@ export function OperationsDashboard({
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isParadeReportOpen, setIsParadeReportOpen] = useState(false);
+  const [isParadeStateOpen, setIsParadeStateOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<CurrentStateRow | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ParadeStateRecordDoc | null>(
     null,
@@ -2058,15 +2058,15 @@ export function OperationsDashboard({
               <div className="grid shrink-0 grid-cols-1 gap-2 sm:flex">
                 <Button
                   variant="outline"
-                  onClick={() => setIsParadeReportOpen(true)}
+                  onClick={() => setIsParadeStateOpen(true)}
                   className="w-full sm:w-auto"
                 >
                   <ScrollText className="size-4" />
-                  View Parade Report
+                  View Parade State
                 </Button>
                 <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
                   <Plus className="size-4" />
-                  Add Parade State
+                  Add Personnel Status
                 </Button>
               </div>
             </div>
@@ -2125,7 +2125,7 @@ export function OperationsDashboard({
                               <TableHead>Platoon</TableHead>
                               <TableHead>Designation</TableHead>
                               <TableHead>Active statuses</TableHead>
-                              <TableHead>Impact</TableHead>
+                              <TableHead>In/Out Camp</TableHead>
                               {/* <TableHead>Record count</TableHead> */}
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -2327,8 +2327,8 @@ export function OperationsDashboard({
                             <TableRow>
                               <TableHead>Serviceman</TableHead>
                               <TableHead>Status</TableHead>
-                              <TableHead>Period</TableHead>
-                              <TableHead>Impact</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>In/Out Camp</TableHead>
                               <TableHead>Submitted by</TableHead>
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -2338,10 +2338,10 @@ export function OperationsDashboard({
                               <TableRow key={record._id}>
                                 <TableCell>
                                   <div className="min-w-52">
-                                    <p className="font-medium text-zinc-950">
+                                    <p className="text-xs font-medium text-zinc-950">
                                       {record.rank} {record.name}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-[12px] text-muted-foreground">
                                       {record.platoon} / {formatDesignation(record.designation)}
                                     </p>
                                   </div>
@@ -2382,10 +2382,10 @@ export function OperationsDashboard({
                                 </TableCell>
                                 <TableCell>
                                   <div className="min-w-44">
-                                    <p className="font-medium text-zinc-950">
+                                    <p className="text-xs font-medium text-zinc-950">
                                       {record.submittedByName}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-[12px] text-muted-foreground">
                                       {formatTimestampLabel(record.createdAt)}
                                     </p>
                                   </div>
@@ -2427,8 +2427,8 @@ export function OperationsDashboard({
         submittedBy={viewer.name}
       />
       <ParadeReportModal
-        open={isParadeReportOpen}
-        onOpenChange={setIsParadeReportOpen}
+        open={isParadeStateOpen}
+        onOpenChange={setIsParadeStateOpen}
       />
       <EditRecordDialog
         open={!!selectedRecord}

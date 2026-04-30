@@ -258,10 +258,10 @@ export function ParadeReportBuilder({
     <div className="space-y-4">
       <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
         <CardHeader className="border-b border-emerald-950/10">
-          <CardTitle>Parade Report</CardTitle>
+          <CardTitle>Parade State</CardTitle>
           <CardDescription>
             Generate a copy-ready parade-state message from the live nominal roll,
-            active Convex statuses, and same-day duty assignments.
+            active statuses, and same-day duty assignments.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">

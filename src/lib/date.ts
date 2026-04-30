@@ -67,7 +67,7 @@ export function getTemporalBucketForDayRange(
 }
 
 export function formatDateLabel(value: string) {
-  return format(parseISO(value), "dd MMM yyyy");
+  return format(parseISO(value), "dd MMM yy");
 }
 
 export function formatTimestampLabel(timestamp: number) {
