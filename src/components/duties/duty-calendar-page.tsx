@@ -29,6 +29,7 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
+import { PersonnelPreview } from "@/components/parade-state/personnel-preview";
 import type {
   DutyAssignmentDoc,
   DutyAssignmentFormData,
@@ -175,48 +176,6 @@ function getDutyAssignmentDisplayName(
   );
 }
 
-function PersonnelPreview({
-  personnel,
-}: {
-  personnel?: PersonnelRecord;
-}) {
-  return (
-    <div className="grid gap-3 rounded-2xl border border-emerald-950/10 bg-emerald-950/[0.03] p-4 sm:grid-cols-2">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Rank
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.rank ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Name
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.name ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Platoon
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.platoon ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Designation
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel ? formatDesignation(personnel.designation) : "--"}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 type DutyColorKey = DutyPreset | "CUSTOM";
 
@@ -986,14 +945,15 @@ export function DutyCalendarPage({
           <div className="space-y-2">
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
                 {format(visibleMonth, "MMMM yyyy")}
+
+                {personnel.length ? (
+                  <Badge variant="outline" className="h-6 ml-4 -translate-y-[6px]">{personnel.length} pax</Badge>
+                ) : null}
               </h2>
             <DutyFilter activeFilters={activeFilters} onToggle={handleFilterToggle} />
           </div>
 
           <div className="flex flex-wrap gap-2">
-              {personnel.length ? (
-                <Badge variant="outline" className="h-8">{personnel.length} pax</Badge>
-              ) : null}
             <Button
               type="button"
               variant="outline"
@@ -1194,7 +1154,7 @@ export function DutyCalendarPage({
                           {format(day.date, "MMM")}
                         </span>
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[9px] pr-2 text-muted-foreground">
                         {visibleAssignments.length}
                         {visibleAssignments.length === 1 ? " duty" : " duties"}
                       </span>

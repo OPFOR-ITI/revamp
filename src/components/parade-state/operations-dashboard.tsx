@@ -31,6 +31,7 @@ import {
   type ParadeStateRecordDoc,
 } from "@/components/parade-state/types";
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
+import { PersonnelPreview } from "@/components/parade-state/personnel-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -217,30 +218,9 @@ function getResolvedRecordPeriodValues(values: RecordPeriodFormValues) {
   };
 }
 
-const addRecordSchema = z
+const recordFormSchema = z
   .object({
-    personnelKey: z.string().min(1, "Select a serviceman."),
-    status: z.enum(STATUS_VALUES),
-    customStatus: z
-      .string()
-      .max(
-        MAX_CUSTOM_STATUS_LENGTH,
-        `Custom status must be ${MAX_CUSTOM_STATUS_LENGTH} characters or fewer.`,
-      )
-      .optional(),
-    affectParadeState: z.boolean().optional(),
-    isPermanent: z.boolean(),
-    startDate: z.string().min(1, "Start date is required."),
-    endDate: z.string().optional(),
-    remarks: z
-      .string()
-      .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
-      .optional(),
-  })
-  .superRefine(addRecordFormIssues);
-
-const editRecordSchema = z
-  .object({
+    personnelKey: z.string().optional(),
     status: z.enum(STATUS_VALUES),
     customStatus: z
       .string()
@@ -264,15 +244,18 @@ const adjustEndDateSchema = z.object({
   endDate: z.string().min(1, "End date is required."),
 });
 
-type AddRecordValues = z.infer<typeof addRecordSchema>;
-type EditRecordValues = z.infer<typeof editRecordSchema>;
+type RecordFormValues = z.infer<typeof recordFormSchema>;
 type AdjustEndDateValues = z.infer<typeof adjustEndDateSchema>;
 type ImpactFilter = "all" | "impact" | "no-impact";
 type DashboardView = "current-state" | "record-log";
+type RecordDialogMode = "add" | "edit";
+type RecordDialogState =
+  | { mode: "add" }
+  | { mode: "edit"; record: ParadeStateRecordDoc };
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
 const MAX_CURRENT_STATE_NAME_LENGTH = 50;
 
-function getEmptyAddRecordValues(): AddRecordValues {
+function getEmptyRecordFormValues(): RecordFormValues {
   return {
     personnelKey: "",
     status: STATUS_VALUES[0],
@@ -282,6 +265,21 @@ function getEmptyAddRecordValues(): AddRecordValues {
     startDate: getTodaySingaporeDateString(),
     endDate: "",
     remarks: "",
+  };
+}
+
+function getRecordFormValuesFromRecord(
+  record: ParadeStateRecordDoc,
+): RecordFormValues {
+  return {
+    personnelKey: record.personnelKey,
+    status: record.status,
+    customStatus: record.customStatus ?? "",
+    affectParadeState: record.affectParadeState,
+    isPermanent: isPermanentRecord(record),
+    startDate: record.startDate,
+    endDate: record.endDate ?? "",
+    remarks: record.remarks ?? "",
   };
 }
 
@@ -390,14 +388,9 @@ function PermanentStatusField({
 }) {
   return (
     <FormItem>
-      <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
-        <div>
-          <FormLabel>Permanent status</FormLabel>
-          <FormDescription>
-           
-          </FormDescription>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="flex h-full items-center justify-between rounded-xl border border-border px-3 py-2.5">
+        <FormLabel>Permanent?</FormLabel>
+        <div className="flex items-center gap-2">
           <Badge variant={checked ? "default" : "outline"} className={checked ? "bg-emerald-800 text-white" : ""}>
             {checked ? "Permanent" : "Dated"}
           </Badge>
@@ -449,59 +442,6 @@ function StatusDaysField({
         className="h-10"
       />
     </FormItem>
-  );
-}
-
-function PersonnelPreview({
-  personnel,
-  submittedBy,
-}: {
-  personnel?: PersonnelRecord;
-  submittedBy?: string;
-}) {
-  return (
-    <div className="grid gap-3 rounded-2xl border border-emerald-950/10 bg-emerald-950/[0.03] p-4 sm:grid-cols-2">
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Rank
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.rank ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Name
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.name ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Platoon
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel?.platoon ?? "--"}
-        </p>
-      </div>
-      <div>
-        <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-          Designation
-        </p>
-        <p className="mt-1 font-medium text-zinc-900">
-          {personnel ? formatDesignation(personnel.designation) : "--"}
-        </p>
-      </div>
-      {submittedBy ? (
-        <div className="sm:col-span-2">
-          <p className="text-xs uppercase tracking-[0.22em] text-emerald-900/55">
-            Submitted by
-          </p>
-          <p className="mt-1 font-medium text-zinc-900">{submittedBy}</p>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -568,7 +508,7 @@ function OtherStatusFields({
   onAffectParadeStateChange: (value: boolean) => void;
 }) {
   return (
-    <div className="grid gap-5 sm:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-2">
       <FormItem>
         <FormLabel htmlFor="custom-status">Custom status</FormLabel>
         <FormControl>
@@ -580,21 +520,13 @@ function OtherStatusFields({
             onChange={(event) => onCustomStatusChange(event.target.value)}
           />
         </FormControl>
-        <FormDescription>
-          Displays as the typed status in parade state.
-        </FormDescription>
         <FormMessage>{customStatusError}</FormMessage>
       </FormItem>
 
       <FormItem>
-        <div className="flex h-full items-center justify-between rounded-2xl border border-border px-4 py-3">
-          <div>
-            <FormLabel>Parade-state impact</FormLabel>
-            <FormDescription>
-              {/* Choose whether this custom status affects parade state. */}
-            </FormDescription>
-          </div>
-          <div className="flex items-center gap-3">
+        <div className="flex h-full items-center justify-between rounded-xl border border-border px-3 py-2.5">
+          <FormLabel>Out of camp?</FormLabel>
+          <div className="flex items-center gap-2">
             <ImpactBadge affectsParadeState={affectParadeState} />
             <Switch
               checked={affectParadeState}
@@ -607,9 +539,11 @@ function OtherStatusFields({
   );
 }
 
-function AddRecordDialog({
+function RecordDialog({
   open,
   onOpenChange,
+  mode,
+  record,
   personnel,
   personnelError,
   personnelLoading,
@@ -617,15 +551,18 @@ function AddRecordDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  mode: RecordDialogMode;
+  record: ParadeStateRecordDoc | null;
   personnel: PersonnelRecord[];
   personnelError: string | null;
   personnelLoading: boolean;
   submittedBy: string;
 }) {
   const createRecord = useMutation(api.paradeState.createRecord);
-  const form = useForm<AddRecordValues>({
-    resolver: zodResolver(addRecordSchema),
-    defaultValues: getEmptyAddRecordValues(),
+  const updateRecord = useMutation(api.paradeState.updateRecord);
+  const form = useForm<RecordFormValues>({
+    resolver: zodResolver(recordFormSchema),
+    defaultValues: getEmptyRecordFormValues(),
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const selectedPersonnelKey = useWatch({
@@ -663,12 +600,21 @@ function AddRecordDialog({
   );
   const pickerDisabled =
     personnelLoading || !!personnelError || personnel.length === 0;
+  const isAddMode = mode === "add";
 
   useEffect(() => {
     if (!open) {
-      form.reset(getEmptyAddRecordValues());
+      form.reset(getEmptyRecordFormValues());
+      return;
     }
-  }, [form, open]);
+
+    if (mode === "edit" && record) {
+      form.reset(getRecordFormValuesFromRecord(record));
+      return;
+    }
+
+    form.reset(getEmptyRecordFormValues());
+  }, [form, mode, open, record]);
 
   useEffect(() => {
     if (isOtherStatus(selectedStatus)) {
@@ -755,84 +701,128 @@ function AddRecordDialog({
     );
   }
 
-  async function onSubmit(values: AddRecordValues) {
-    if (!selectedPersonnel) {
-      form.setError("personnelKey", {
-        message: "Select a serviceman before saving.",
-      });
-      return;
-    }
-
+  async function onSubmit(values: RecordFormValues) {
     setIsSubmitting(true);
 
     try {
       const resolvedPeriod = getResolvedRecordPeriodValues(values);
 
-      await createRecord({
-        personnelKey: selectedPersonnel.personnelKey,
-        rank: selectedPersonnel.rank,
-        name: selectedPersonnel.name,
-        platoon: selectedPersonnel.platoon,
-        designation: selectedPersonnel.designation,
-        status: values.status,
-        customStatus: isOtherStatus(values.status)
-          ? values.customStatus?.trim() || undefined
-          : undefined,
-        affectParadeState: isOtherStatus(values.status)
-          ? values.affectParadeState
-          : undefined,
-        isPermanent: resolvedPeriod.isPermanent,
-        startDate: values.startDate,
-        endDate: resolvedPeriod.endDate,
-        remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
-      });
+      if (isAddMode) {
+        if (!selectedPersonnel) {
+          form.setError("personnelKey", {
+            message: "Select a serviceman before saving.",
+          });
+          return;
+        }
 
-      toast.success("Parade-state record created.");
+        await createRecord({
+          personnelKey: selectedPersonnel.personnelKey,
+          rank: selectedPersonnel.rank,
+          name: selectedPersonnel.name,
+          platoon: selectedPersonnel.platoon,
+          designation: selectedPersonnel.designation,
+          status: values.status,
+          customStatus: isOtherStatus(values.status)
+            ? values.customStatus?.trim() || undefined
+            : undefined,
+          affectParadeState: isOtherStatus(values.status)
+            ? values.affectParadeState
+            : undefined,
+          isPermanent: resolvedPeriod.isPermanent,
+          startDate: values.startDate,
+          endDate: resolvedPeriod.endDate,
+          remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
+        });
+
+        toast.success("Parade-state record created.");
+      } else {
+        if (!record) {
+          return;
+        }
+
+        await updateRecord({
+          recordId: record._id,
+          status: values.status,
+          customStatus: isOtherStatus(values.status)
+            ? values.customStatus?.trim() || undefined
+            : undefined,
+          affectParadeState: isOtherStatus(values.status)
+            ? values.affectParadeState
+            : undefined,
+          isPermanent: resolvedPeriod.isPermanent,
+          startDate: values.startDate,
+          endDate: resolvedPeriod.endDate,
+          remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
+        });
+
+        toast.success("Record updated.");
+      }
+
       onOpenChange(false);
-      form.reset(getEmptyAddRecordValues());
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to save record.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : isAddMode
+            ? "Unable to save record."
+            : "Unable to update record.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  const previewPersonnel = record
+    ? {
+        personnelKey: record.personnelKey,
+        rank: record.rank,
+        name: record.name,
+        platoon: record.platoon,
+        designation: record.designation,
+        label: `${record.rank} ${record.name} / ${record.platoon} / ${formatDesignation(record.designation)}`,
+      }
+    : undefined;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Add Personnel Status</DialogTitle>
+          <DialogTitle>{isAddMode ? "Add Personnel Status" : "Edit Record"}</DialogTitle>
           <DialogDescription>
-            Create a new perssonel status record
+            {isAddMode
+              ? "Create a new personnel status record."
+              : "Update status, dates, or remarks. Serviceman identity stays locked to preserve the historical snapshot."}
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-            {personnelError ? (
+            {isAddMode && personnelError ? (
               <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 {personnelError} Existing records still work, but the personnel
                 picker is disabled until refresh succeeds.
               </div>
             ) : null}
 
-            <FormItem>
-              <FormLabel>Serviceman</FormLabel>
-              <PersonnelCombobox
-                personnel={personnel}
-                value={selectedPersonnelKey}
-                onChange={(nextValue) =>
-                  form.setValue("personnelKey", nextValue, {
-                    shouldDirty: true,
-                    shouldValidate: true,
-                  })
-                }
-                disabled={pickerDisabled}
-              />
-              <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
-            </FormItem>
-
-            <PersonnelPreview personnel={selectedPersonnel} submittedBy={submittedBy} />
+            {isAddMode ? (
+              <FormItem>
+                <FormLabel>Serviceman</FormLabel>
+                <PersonnelCombobox
+                  personnel={personnel}
+                  value={selectedPersonnelKey ?? ""}
+                  onChange={(nextValue) =>
+                    form.setValue("personnelKey", nextValue, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  disabled={pickerDisabled}
+                />
+                <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
+              </FormItem>
+            ) : (
+              <PersonnelPreview personnel={previewPersonnel} />
+            )}
 
             <div
               className={
@@ -908,7 +898,7 @@ function AddRecordDialog({
             >
               {fixedDurationDays !== undefined ? (
                 <DateStepperField
-                  id="add-start-date"
+                  id={`${mode}-start-date`}
                   label="Start date"
                   value={startDate}
                   onChange={handleStartDateChange}
@@ -916,13 +906,14 @@ function AddRecordDialog({
                 />
               ) : isPermanent ? (
                 <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
-                  No start or end date. Permanent statuses become active
-                  immediately and stay active until you edit the record later.
+                  {isAddMode
+                    ? "No start or end date. Permanent statuses become active immediately and stay active until you edit the record later."
+                    : "No start or end date. Turn off permanent status if you need this record to use a dated range."}
                 </div>
               ) : (
                 <>
                   <DateStepperField
-                    id="add-start-date"
+                    id={`${mode}-start-date`}
                     label="Start date"
                     value={startDate}
                     onChange={handleStartDateChange}
@@ -930,13 +921,13 @@ function AddRecordDialog({
                   />
 
                   <StatusDaysField
-                    id="add-duration-days"
+                    id={`${mode}-duration-days`}
                     value={dayOffsetInput}
                     onChange={handleDayOffsetChange}
                   />
 
                   <DateStepperField
-                    id="add-end-date"
+                    id={`${mode}-end-date`}
                     label="End date"
                     value={endDate ?? ""}
                     onChange={handleEndDateChange}
@@ -948,400 +939,48 @@ function AddRecordDialog({
             </div>
 
             <FormItem>
-              <FormLabel htmlFor="add-remarks">Remarks</FormLabel>
+              <FormLabel htmlFor={`${mode}-remarks`}>Remarks</FormLabel>
               <FormControl>
                 <Textarea
-                  id="add-remarks"
+                  id={`${mode}-remarks`}
                   rows={4}
                   placeholder="Optional supporting details"
                   {...form.register("remarks")}
                 />
               </FormControl>
-              <FormDescription>
-                Optional. Up to {MAX_REMARKS_LENGTH} characters.
-              </FormDescription>
+              {isAddMode ? (
+                <FormDescription>
+                  Optional. Up to {MAX_REMARKS_LENGTH} characters.
+                </FormDescription>
+              ) : null}
               <FormMessage>{form.formState.errors.remarks?.message}</FormMessage>
             </FormItem>
 
             <DialogFooter className="gap-2">
+              {isAddMode ? (
+                <p className="mr-auto hidden text-xs text-muted-foreground sm:block">
+                  Submitted by {submittedBy}
+                </p>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                  className="w-full sm:w-auto"
-                >
-                  Cancel
-                </Button>
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
               <Button
                 type="submit"
-                disabled={pickerDisabled || isSubmitting}
+                disabled={isSubmitting || (isAddMode && pickerDisabled)}
                 className="w-full sm:w-auto"
               >
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                Save record
+                {isAddMode ? "Save record" : "Save changes"}
               </Button>
             </DialogFooter>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EditRecordDialog({
-  open,
-  onOpenChange,
-  record,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  record: ParadeStateRecordDoc | null;
-}) {
-  const updateRecord = useMutation(api.paradeState.updateRecord);
-  const form = useForm<EditRecordValues>({
-    resolver: zodResolver(editRecordSchema),
-    defaultValues: {
-      status: STATUS_VALUES[0],
-      customStatus: "",
-      affectParadeState: false,
-      isPermanent: false,
-      startDate: getTodaySingaporeDateString(),
-      endDate: "",
-      remarks: "",
-    },
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const selectedStatus = useWatch({
-    control: form.control,
-    name: "status",
-  });
-  const customStatus = useWatch({
-    control: form.control,
-    name: "customStatus",
-  });
-  const affectParadeState = useWatch({
-    control: form.control,
-    name: "affectParadeState",
-  });
-  const isPermanent = useWatch({
-    control: form.control,
-    name: "isPermanent",
-  });
-  const startDate = useWatch({
-    control: form.control,
-    name: "startDate",
-  });
-  const endDate = useWatch({
-    control: form.control,
-    name: "endDate",
-  });
-  const selectedStatusRecordPeriodConfig = getStatusRecordPeriodConfig(selectedStatus);
-  const fixedDurationDays = selectedStatusRecordPeriodConfig.fixedDurationDays;
-
-  useEffect(() => {
-    if (!record) {
-      return;
-    }
-
-    form.reset({
-      status: record.status,
-      customStatus: record.customStatus ?? "",
-      affectParadeState: record.affectParadeState,
-      isPermanent: isPermanentRecord(record),
-      startDate: record.startDate,
-      endDate: record.endDate ?? "",
-      remarks: record.remarks ?? "",
-    });
-  }, [form, record]);
-
-  useEffect(() => {
-    if (isOtherStatus(selectedStatus)) {
-      return;
-    }
-
-    form.setValue("customStatus", "", {
-      shouldDirty: false,
-      shouldValidate: false,
-    });
-    form.setValue("affectParadeState", false, {
-      shouldDirty: false,
-      shouldValidate: false,
-    });
-  }, [form, selectedStatus]);
-
-  useEffect(() => {
-    const fixedEndDate = getFixedDurationEndDate(selectedStatus, startDate);
-
-    if (!fixedEndDate) {
-      return;
-    }
-
-    form.setValue("isPermanent", false, {
-      shouldDirty: false,
-      shouldValidate: true,
-    });
-    form.setValue("endDate", fixedEndDate, {
-      shouldDirty: false,
-      shouldValidate: true,
-    });
-  }, [form, selectedStatus, startDate]);
-
-  const dayOffsetInput = isPermanent
-    ? ""
-    : getDaysOffsetInputValue(startDate, endDate);
-
-  function handleStartDateChange(nextValue: string) {
-    form.setValue("startDate", nextValue, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-
-    const fixedEndDate = getFixedDurationEndDate(selectedStatus, nextValue);
-
-    if (fixedEndDate) {
-      form.setValue("endDate", fixedEndDate, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
-      return;
-    }
-
-    if (!dayOffsetInput) {
-      return;
-    }
-
-    const durationDays = Number(dayOffsetInput);
-    form.setValue(
-      "endDate",
-      addDaysToDateString(nextValue, Math.max(durationDays - 1, 0)),
-      {
-        shouldDirty: true,
-        shouldValidate: true,
-      },
-    );
-  }
-
-  function handleEndDateChange(nextValue: string) {
-    form.setValue("endDate", nextValue, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }
-
-  function handleDayOffsetChange(nextValue: string) {
-    form.setValue(
-      "endDate",
-      nextValue ? addDaysToDateString(startDate, Math.max(Number(nextValue) - 1, 0)) : "",
-      {
-        shouldDirty: true,
-        shouldValidate: true,
-      },
-    );
-  }
-
-  async function onSubmit(values: EditRecordValues) {
-    if (!record) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const resolvedPeriod = getResolvedRecordPeriodValues(values);
-
-      await updateRecord({
-        recordId: record._id,
-        status: values.status,
-        customStatus: isOtherStatus(values.status)
-          ? values.customStatus?.trim() || undefined
-          : undefined,
-        affectParadeState: isOtherStatus(values.status)
-          ? values.affectParadeState
-          : undefined,
-        isPermanent: resolvedPeriod.isPermanent,
-        startDate: values.startDate,
-        endDate: resolvedPeriod.endDate,
-        remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
-      });
-
-      toast.success("Record updated.");
-      onOpenChange(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update record.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const previewPersonnel = record
-    ? {
-        personnelKey: record.personnelKey,
-        rank: record.rank,
-        name: record.name,
-        platoon: record.platoon,
-        designation: record.designation,
-        label: `${record.rank} ${record.name} / ${record.platoon} / ${formatDesignation(record.designation)}`,
-      }
-    : undefined;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit Record</DialogTitle>
-          <DialogDescription>
-            Update status, dates, or remarks. Serviceman identity stays locked
-            to preserve the historical snapshot.
-          </DialogDescription>
-        </DialogHeader>
-
-        {record ? (
-          <Form {...form}>
-            <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-              <PersonnelPreview personnel={previewPersonnel} />
-
-              <div
-                className={
-                  selectedStatusRecordPeriodConfig.showPermanentStatusToggle
-                    ? "grid gap-5 sm:grid-cols-2"
-                    : "grid gap-5"
-                }
-              >
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select
-                    value={selectedStatus}
-                    onValueChange={(value) =>
-                      form.setValue("status", value as Status, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_VALUES.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {status}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage>{form.formState.errors.status?.message}</FormMessage>
-                </FormItem>
-
-                {selectedStatusRecordPeriodConfig.showPermanentStatusToggle ? (
-                  <PermanentStatusField
-                    checked={!!isPermanent}
-                    onCheckedChange={(value) =>
-                      form.setValue("isPermanent", value, {
-                        shouldDirty: true,
-                        shouldValidate: true,
-                      })
-                    }
-                  />
-                ) : null}
-              </div>
-
-              {isOtherStatus(selectedStatus) ? (
-                <OtherStatusFields
-                  customStatus={customStatus ?? ""}
-                  customStatusError={form.formState.errors.customStatus?.message}
-                  onCustomStatusChange={(value) =>
-                    form.setValue("customStatus", value, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                  affectParadeState={!!affectParadeState}
-                  onAffectParadeStateChange={(value) =>
-                    form.setValue("affectParadeState", value, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                />
-              ) : null}
-
-              <div
-                className={
-                  fixedDurationDays === undefined
-                    ? "grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start"
-                    : "grid gap-5"
-                }
-              >
-                {fixedDurationDays !== undefined ? (
-                  <DateStepperField
-                    id="edit-start-date"
-                    label="Start date"
-                    value={startDate}
-                    onChange={handleStartDateChange}
-                    error={form.formState.errors.startDate?.message}
-                  />
-                ) : isPermanent ? (
-                  <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
-                    No start or end date. Turn off permanent status if you need
-                    this record to use a dated range.
-                  </div>
-                ) : (
-                  <>
-                    <DateStepperField
-                      id="edit-start-date"
-                      label="Start date"
-                      value={startDate}
-                      onChange={handleStartDateChange}
-                      error={form.formState.errors.startDate?.message}
-                    />
-
-                    <StatusDaysField
-                      id="edit-duration-days"
-                      value={dayOffsetInput}
-                      onChange={handleDayOffsetChange}
-                    />
-
-                    <DateStepperField
-                      id="edit-end-date"
-                      label="End date"
-                      value={endDate ?? ""}
-                      onChange={handleEndDateChange}
-                      minDate={startDate}
-                      error={form.formState.errors.endDate?.message}
-                    />
-                  </>
-                )}
-              </div>
-
-              <FormItem>
-                <FormLabel htmlFor="edit-remarks">Remarks</FormLabel>
-                <FormControl>
-                  <Textarea
-                    id="edit-remarks"
-                    rows={4}
-                    {...form.register("remarks")}
-                  />
-                </FormControl>
-                <FormMessage>{form.formState.errors.remarks?.message}</FormMessage>
-              </FormItem>
-
-              <DialogFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onOpenChange(false)}
-                  className="w-full sm:w-auto"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-                  {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                  Save changes
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -1815,12 +1454,10 @@ export function OperationsDashboard({
   const [personnelError, setPersonnelError] = useState<string | null>(null);
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isParadeStateOpen, setIsParadeStateOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<CurrentStateRow | null>(null);
-  const [selectedRecord, setSelectedRecord] = useState<ParadeStateRecordDoc | null>(
-    null,
-  );
+  const [recordDialogState, setRecordDialogState] =
+    useState<RecordDialogState | null>(null);
   const [recordPendingDelete, setRecordPendingDelete] =
     useState<ParadeStateRecordDoc | null>(null);
   const [recordForEndDateAdjust, setRecordForEndDateAdjust] =
@@ -1916,13 +1553,15 @@ export function OperationsDashboard({
   const rowForSelectedPersonnel = selectedRow
     ? currentState.find((row) => row.personnelKey === selectedRow.personnelKey) ?? selectedRow
     : null;
+  const selectedRecord =
+    recordDialogState?.mode === "edit" ? recordDialogState.record : null;
   const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
     (left, right) => left.localeCompare(right),
   );
 
   function handleRecordDeleted(record: ParadeStateRecordDoc) {
     if (selectedRecord?._id === record._id) {
-      setSelectedRecord(null);
+      setRecordDialogState(null);
     }
 
     if (recordForEndDateAdjust?._id === record._id) {
@@ -2171,7 +1810,10 @@ export function OperationsDashboard({
                   <ScrollText className="size-4" />
                   View Parade State
                 </Button>
-                <Button onClick={() => setIsAddDialogOpen(true)} className="w-full sm:w-auto">
+                <Button
+                  onClick={() => setRecordDialogState({ mode: "add" })}
+                  className="w-full sm:w-auto"
+                >
                   <Plus className="size-4" />
                   Add Personnel Status
                 </Button>
@@ -2468,7 +2110,9 @@ export function OperationsDashboard({
                         <RecordLogMobileCard
                           key={`${record._id}-mobile`}
                           record={record}
-                          onEdit={() => setSelectedRecord(record)}
+                          onEdit={() =>
+                            setRecordDialogState({ mode: "edit", record })
+                          }
                           onDelete={() => setRecordPendingDelete(record)}
                           onAdjustEndDate={() => setRecordForEndDateAdjust(record)}
                         />
@@ -2546,7 +2190,9 @@ export function OperationsDashboard({
                                 <TableCell className="text-right">
                                   <RecordActionsMenu
                                     record={record}
-                                    onEdit={() => setSelectedRecord(record)}
+                                    onEdit={() =>
+                                      setRecordDialogState({ mode: "edit", record })
+                                    }
                                     onDelete={() => setRecordPendingDelete(record)}
                                     onAdjustEndDate={() =>
                                       setRecordForEndDateAdjust(record)
@@ -2571,9 +2217,15 @@ export function OperationsDashboard({
         </div>
       </SidebarInset>
 
-      <AddRecordDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
+      <RecordDialog
+        open={recordDialogState !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRecordDialogState(null);
+          }
+        }}
+        mode={recordDialogState?.mode ?? "add"}
+        record={selectedRecord}
         personnel={personnel}
         personnelError={personnelError}
         personnelLoading={isPersonnelLoading}
@@ -2582,15 +2234,6 @@ export function OperationsDashboard({
       <ParadeReportModal
         open={isParadeStateOpen}
         onOpenChange={setIsParadeStateOpen}
-      />
-      <EditRecordDialog
-        open={!!selectedRecord}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedRecord(null);
-          }
-        }}
-        record={selectedRecord}
       />
       <AdjustEndDateDialog
         open={!!recordForEndDateAdjust}
@@ -2609,7 +2252,7 @@ export function OperationsDashboard({
           }
         }}
         selectedRow={rowForSelectedPersonnel}
-        onEditRecord={setSelectedRecord}
+        onEditRecord={(record) => setRecordDialogState({ mode: "edit", record })}
         onDeleteRecord={setRecordPendingDelete}
         onAdjustEndDate={setRecordForEndDateAdjust}
       />
