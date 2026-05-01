@@ -92,14 +92,19 @@ export function AppSidebarShell({
       className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(79,120,67,0.14),_transparent_42%),linear-gradient(180deg,_#f4f0e3_0%,_#ebe5d4_45%,_#e1e7d9_100%)]"
     >
       <Sidebar variant="inset" collapsible="icon" className="border-sidebar-border/70">
-        <SidebarHeader className="gap-2 p-3">
-          <div className="rounded-2xl border border-sidebar-border/80 bg-white/70 px-3 py-3 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-900/55">
-              Revamp
-            </p>
-            <p className="mt-1 text-sm font-medium text-zinc-900">
-              Daily operations board
-            </p>
+        <SidebarHeader className="gap-2 p-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:p-2">
+          <div className="flex items-center gap-3 rounded-2xl border border-sidebar-border/80 bg-white/70 px-3 py-3 shadow-sm transition-all duration-200 group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-0 group-data-[collapsible=icon]:shadow-none">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(145deg,_rgba(44,74,36,0.96),_rgba(118,141,68,0.9))] text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-sm">
+              RV
+            </div>
+            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-900/55">
+                Revamp
+              </p>
+              <p className="mt-1 text-sm font-medium text-zinc-900">
+                Daily operations board
+              </p>
+            </div>
           </div>
         </SidebarHeader>
 
@@ -109,19 +114,20 @@ export function AppSidebarShell({
 
         <SidebarSeparator />
 
-        <SidebarFooter className="gap-3 p-3">
-          <SidebarMenu>
-            <SidebarMenuItem>
+        <SidebarFooter className="gap-3 p-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:p-2">
+          <SidebarMenu className="group-data-[collapsible=icon]:items-center">
+            <SidebarMenuItem className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
               <DropdownMenu>
                 <SidebarMenuButton
                   size="lg"
-                  className="bg-[linear-gradient(135deg,_rgba(49,80,42,0.96),_rgba(87,103,53,0.88))] text-white hover:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] hover:text-white data-active:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] data-[state=open]:bg-white/10"
+                  tooltip={viewer.name}
+                  className="min-h-12 rounded-2xl bg-[linear-gradient(135deg,_rgba(49,80,42,0.96),_rgba(87,103,53,0.88))] text-white shadow-sm transition-all duration-200 hover:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] hover:text-white data-active:bg-[linear-gradient(135deg,_rgba(55,88,46,0.98),_rgba(95,112,59,0.9))] data-[state=open]:bg-white/10 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:p-0!"
                   render={<DropdownMenuTrigger />}
                 >
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-white/14 text-xs font-semibold text-white">
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-white/14 text-xs font-semibold text-white transition-transform duration-200 group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:bg-white/18">
                     {viewerInitials || "U"}
                   </div>
-                  <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                  <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{viewer.name}</span>
                       {nominalRollCount !== undefined ? (
@@ -134,13 +140,13 @@ export function AppSidebarShell({
                       {viewer.email}
                     </span>
                   </div>
-                  <ChevronsUpDown className="ml-auto size-4 text-emerald-50/80" />
+                  <ChevronsUpDown className="ml-auto size-4 text-emerald-50/80 group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
                 <DropdownMenuContent side="top" align="end">
                   <DropdownMenuGroup>
                     <DropdownMenuLabel className="px-2 py-2">
                       <div className="flex items-center gap-3">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-900 text-xs font-semibold text-white">
+                        <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-900 text-xs font-semibold text-white">
                           {viewerInitials || "U"}
                         </div>
                         <div className="min-w-0">

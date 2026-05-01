@@ -13,8 +13,7 @@ export default async function AdminUsersPage() {
         email: user.email,
         roles: user.roles,
       }}
-      title="User Management"
-      description="Approve access, review account status, and assign one or more roles from a single admin screen."
+      title="Users"
       navGroups={getPrimaryNavGroups({
         activeItem: "user-approvals",
         roles: user.roles,
