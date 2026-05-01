@@ -126,12 +126,12 @@ function SummaryChip({
   accent: ReactNode;
 }) {
   return (
-    <div className="min-w-28 rounded-2xl border border-emerald-950/10 bg-white/72 px-3 py-2 shadow-sm shadow-emerald-950/5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+    <div className="w-full rounded-2xl border border-emerald-950/10 bg-white/72 px-3 py-2 shadow-sm shadow-emerald-950/5">
+      <div className="space-y-1">
+        <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
           {label}
         </span>
-        <span className="text-xs text-zinc-500">{accent}</span>
+        <span className="block text-xs text-zinc-500">{accent}</span>
       </div>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
         {value}
@@ -364,7 +364,7 @@ export function UserManagementTable() {
             <p className="text-sm text-zinc-600">
               Pending accounts are surfaced first for faster review.
             </p>
-            <div className="grid grid-cols-3 gap-2 sm:min-w-[21rem]">
+            <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-3 lg:max-w-[24rem]">
               <SummaryChip
                 label="Pending"
                 value={sortedUsers === undefined ? "--" : String(pendingCount)}
