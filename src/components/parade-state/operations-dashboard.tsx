@@ -1600,10 +1600,6 @@ export function OperationsDashboard({
 
   const activeViewTitle =
     activeView === "current-state" ? "Current State" : "Record Log";
-  const activeViewDescription =
-    activeView === "current-state"
-      ? "One row per serviceman with overlapping active statuses grouped together."
-      : "Historical parade-state records with compact client-side filters.";
   const hasRecordSearch = search.trim().length > 0;
   const hasCustomDateRange =
     recordFilterFromDate !== todayDate || recordFilterToDate !== "";
@@ -1828,25 +1824,12 @@ export function OperationsDashboard({
               </div>
             ) : null}
 
-            <Card
-              size="sm"
-              className="border-emerald-950/10 bg-white/75 shadow-sm shadow-emerald-950/5"
-            >
-              <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-zinc-950">{activeViewTitle}</p>
-                  <p className="text-sm text-zinc-600">{activeViewDescription}</p>
-                </div>
-              </CardContent>
-            </Card>
-
             {activeView === "current-state" ? (
               <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
                 <CardHeader className="border-b border-emerald-950/10">
                   <CardTitle>Active Satuses</CardTitle>
                   <CardDescription>
-                    One row per serviceman with all currently active overlapping
-                    statuses grouped together.
+                    Table of Servicemen with all his currently active statuses.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-[-8]">
@@ -1954,11 +1937,10 @@ export function OperationsDashboard({
                 <CardHeader className="border-b border-emerald-950/10">
                   <CardTitle>Record Log</CardTitle>
                   <CardDescription>
-                    Full historical log with compact filters for status, platoon,
-                    impact, and active dates.
+                    Full historical log of all statuses.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4 pt-4">
+                <CardContent className="space-y-4 pt-0">
                   <div className="rounded-2xl border border-emerald-950/10 bg-background/85 p-3 shadow-sm shadow-emerald-950/5">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">

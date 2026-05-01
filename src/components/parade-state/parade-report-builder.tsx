@@ -256,15 +256,17 @@ export function ParadeReportBuilder({
 
   return (
     <div className="space-y-4">
-      <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
+      <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5 rounded-[30px]">
         <CardHeader className="border-b border-emerald-950/10">
-          <CardTitle>Parade State</CardTitle>
+          <CardTitle>
+            Parade State 
+            <Badge variant="outline" className="ml-3">Nominal Roll {nominalRollCount}</Badge>
+          </CardTitle>
           <CardDescription>
-            Generate a copy-ready parade-state message from the live nominal roll,
-            active statuses, and same-day duty assignments.
+            A copy-ready parade-state message.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4">
+        <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
             <ReportDateField value={selectedDate} onChange={setSelectedDate} />
 
@@ -284,7 +286,7 @@ export function ParadeReportBuilder({
               <FormMessage>{timeError}</FormMessage>
             </FormItem>
 
-            <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 md:flex">
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-2 md:flex">
               <Button
                 type="button"
                 variant="outline"
@@ -315,12 +317,6 @@ export function ParadeReportBuilder({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">Nominal Roll {nominalRollCount}</Badge>
-            <Badge variant="outline">Date {formatDateLabel(selectedDate)}</Badge>
-            <Badge variant="outline">As At {asAtTime || "----"}hrs</Badge>
-          </div>
-
           {personnelError ? (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               Personnel refresh failed: {personnelError}
@@ -343,7 +339,7 @@ export function ParadeReportBuilder({
         </CardContent>
       </Card>
 
-      <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5">
+      <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5 rounded-[30px]">
         <CardHeader className="border-b border-emerald-950/10">
           <CardTitle>Preview</CardTitle>
           <CardDescription>
@@ -351,7 +347,7 @@ export function ParadeReportBuilder({
             ops channel.
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-4">
+        <CardContent className="pt-2">
           {isLoadingReport ? (
             <div className="space-y-3">
               <Skeleton className="h-8 w-2/5 rounded-xl" />
