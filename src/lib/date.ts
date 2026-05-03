@@ -71,8 +71,8 @@ export type TemporalBucket = "Active" | "Past" | "Future";
 
 export const TEMPORAL_BUCKET_COLORS: Record<TemporalBucket, string> = {
   Active: "bg-emerald-500",
-  Past: "bg-zinc-400",
-  Future: "bg-amber-400",
+  Past: "bg-gray-400",
+  Future: "bg-sky-300",
 };
 
 export function formatDateLabel(value: string) {

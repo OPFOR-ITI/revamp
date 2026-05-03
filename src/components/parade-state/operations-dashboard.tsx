@@ -30,7 +30,9 @@ import {
   type CurrentStateRow,
   type ParadeStateRecordDoc,
 } from "@/components/parade-state/types";
+import { BulkSelectionList } from "@/components/parade-state/bulk-selection-list";
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
+import { PersonnelMultiCombobox } from "@/components/parade-state/personnel-multi-combobox";
 import { PersonnelPreview } from "@/components/parade-state/personnel-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -112,6 +114,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -306,7 +309,7 @@ function TemporalBucketDot({ bucket }: { bucket: TemporalBucket }) {
         className={`inline-block size-2 shrink-0 cursor-default rounded-full ${TEMPORAL_BUCKET_COLORS[bucket]}`}
         aria-label={bucket}
       />
-      <TooltipContent side="top">{bucket}</TooltipContent>
+      <TooltipContent side="top">{bucket} Status</TooltipContent>
     </Tooltip>
   );
 }
@@ -585,6 +588,9 @@ function RecordDialog({
     defaultValues: getEmptyRecordFormValues(),
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkPersonnelKeys, setBulkPersonnelKeys] = useState<string[]>([]);
+  const [bulkError, setBulkError] = useState<string | null>(null);
   const selectedPersonnelKey = useWatch({
     control: form.control,
     name: "personnelKey",
@@ -625,6 +631,9 @@ function RecordDialog({
   useEffect(() => {
     if (!open) {
       form.reset(getEmptyRecordFormValues());
+      setBulkMode(false);
+      setBulkPersonnelKeys([]);
+      setBulkError(null);
       return;
     }
 
@@ -724,11 +733,62 @@ function RecordDialog({
 
   async function onSubmit(values: RecordFormValues) {
     setIsSubmitting(true);
+    setBulkError(null);
 
     try {
       const resolvedPeriod = getResolvedRecordPeriodValues(values);
 
-      if (isAddMode) {
+      if (isAddMode && bulkMode) {
+        const selectedList = bulkPersonnelKeys
+          .map((key) => personnel.find((p) => p.personnelKey === key))
+          .filter((p): p is PersonnelRecord => p !== undefined);
+
+        if (selectedList.length === 0) {
+          setBulkError("Select at least one serviceman.");
+          return;
+        }
+
+        let successCount = 0;
+        const failedNames: string[] = [];
+
+        for (const person of selectedList) {
+          try {
+            await createRecord({
+              personnelKey: person.personnelKey,
+              rank: person.rank,
+              name: person.name,
+              platoon: person.platoon,
+              designation: person.designation,
+              status: values.status,
+              customStatus: isOtherStatus(values.status)
+                ? values.customStatus?.trim() || undefined
+                : undefined,
+              affectParadeState: shouldShowOutOfCampToggle(values.status)
+                ? values.affectParadeState
+                : undefined,
+              isPermanent: resolvedPeriod.isPermanent,
+              startDate: values.startDate,
+              endDate: resolvedPeriod.endDate,
+              remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
+            });
+            successCount++;
+          } catch (error) {
+            failedNames.push(person.name);
+          }
+        }
+
+        if (failedNames.length === 0) {
+          toast.success(
+            `Created ${successCount} parade-state record${successCount === 1 ? "" : "s"}.`,
+          );
+        } else {
+          toast.error(
+            `Created ${successCount} of ${selectedList.length}. Failed for: ${failedNames.join(", ")}`,
+          );
+        }
+
+        onOpenChange(false);
+      } else if (isAddMode) {
         if (!selectedPersonnel) {
           form.setError("personnelKey", {
             message: "Select a serviceman before saving.",
@@ -756,6 +816,7 @@ function RecordDialog({
         });
 
         toast.success("Parade-state record created.");
+        onOpenChange(false);
       } else {
         if (!record) {
           return;
@@ -777,9 +838,8 @@ function RecordDialog({
         });
 
         toast.success("Record updated.");
+        onOpenChange(false);
       }
-
-      onOpenChange(false);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -811,7 +871,9 @@ function RecordDialog({
           <DialogTitle>{isAddMode ? "Add Personnel Status" : "Edit Record"}</DialogTitle>
           <DialogDescription>
             {isAddMode
-              ? "Create a new personnel status record."
+              ? bulkMode
+                ? "Select multiple servicemen to apply the same status to all of them."
+                : "Create a new personnel status record."
               : "Update status, dates, or remarks. Serviceman identity stays locked to preserve the historical snapshot."}
           </DialogDescription>
         </DialogHeader>
@@ -826,21 +888,63 @@ function RecordDialog({
             ) : null}
 
             {isAddMode ? (
-              <FormItem>
-                <FormLabel>Serviceman</FormLabel>
-                <PersonnelCombobox
-                  personnel={personnel}
-                  value={selectedPersonnelKey ?? ""}
-                  onChange={(nextValue) =>
-                    form.setValue("personnelKey", nextValue, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    })
-                  }
-                  disabled={pickerDisabled}
-                />
-                <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
-              </FormItem>
+              <Tabs
+                defaultValue="single"
+                onValueChange={(value) => {
+                  const isBulk = value === "bulk";
+                  setBulkMode(isBulk);
+                  setBulkError(null);
+                }}
+              >
+                <TabsList className="w-full">
+                  <TabsTrigger value="single">Single</TabsTrigger>
+                  <TabsTrigger value="bulk">Bulk</TabsTrigger>
+                </TabsList>
+                <TabsContent value="single">
+                  <FormItem>
+                    <FormLabel>Serviceman</FormLabel>
+                    <PersonnelCombobox
+                      personnel={personnel}
+                      value={selectedPersonnelKey ?? ""}
+                      onChange={(nextValue) =>
+                        form.setValue("personnelKey", nextValue, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      disabled={pickerDisabled}
+                    />
+                    <FormMessage>{form.formState.errors.personnelKey?.message}</FormMessage>
+                  </FormItem>
+                </TabsContent>
+                <TabsContent value="bulk">
+                  <FormItem>
+                    <FormLabel>Servicemen</FormLabel>
+                    <PersonnelMultiCombobox
+                      personnel={personnel}
+                      value={bulkPersonnelKeys}
+                      onChange={(nextValue) => {
+                        setBulkPersonnelKeys(nextValue);
+                        setBulkError(null);
+                      }}
+                      disabled={pickerDisabled}
+                    />
+                    {bulkError ? (
+                      <p className="text-[0.8rem] font-medium text-destructive">{bulkError}</p>
+                    ) : null}
+                  </FormItem>
+                  <BulkSelectionList
+                    personnel={personnel}
+                    selectedKeys={bulkPersonnelKeys}
+                    onRemove={(key) => {
+                      setBulkPersonnelKeys((prev) =>
+                        prev.filter((k) => k !== key),
+                      );
+                    }}
+                    className="mt-3"
+                  />
+                </TabsContent>
+              </Tabs>
             ) : (
               <PersonnelPreview personnel={previewPersonnel} />
             )}
@@ -1015,7 +1119,13 @@ function RecordDialog({
                 className="w-full sm:w-auto"
               >
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                {isAddMode ? "Save record" : "Save changes"}
+                {isAddMode
+                  ? bulkMode
+                    ? bulkPersonnelKeys.length > 0
+                      ? `Save ${bulkPersonnelKeys.length} record${bulkPersonnelKeys.length === 1 ? "" : "s"}`
+                      : "Save records"
+                    : "Save record"
+                  : "Save changes"}
               </Button>
             </DialogFooter>
           </form>

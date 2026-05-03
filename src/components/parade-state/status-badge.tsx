@@ -46,7 +46,7 @@ export function StatusBadge({
 }) {
   return (
     <Badge
-      className={cn("border-transparent font-semibold tracking-wide", statusBadgeClasses[status])}
+      className={cn("border-transparent font-semibold text-[10px] py-0 tracking-wide", statusBadgeClasses[status])}
       variant="outline"
     >
       {formatStatusLabel(status, customStatus)}
