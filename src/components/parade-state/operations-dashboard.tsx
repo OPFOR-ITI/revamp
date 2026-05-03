@@ -1695,11 +1695,10 @@ export function OperationsDashboard({
   const currentState = currentStateQuery ?? [];
   const records = recordLog ?? [];
   const todayDate = getTodaySingaporeDateString();
-  const effectiveRecordFilterToDate =
-    recordFilterToDate ||
-    (recordFilterFromDate > todayDate ? recordFilterFromDate : todayDate);
   const recordFilterStartDay = dateStringToDayIndex(recordFilterFromDate);
-  const recordFilterEndDay = dateStringToDayIndex(effectiveRecordFilterToDate);
+  const recordFilterEndDay = recordFilterToDate
+    ? dateStringToDayIndex(recordFilterToDate)
+    : undefined;
   const rowForSelectedPersonnel = selectedRow
     ? currentState.find((row) => row.personnelKey === selectedRow.personnelKey) ?? selectedRow
     : null;
@@ -1731,7 +1730,7 @@ export function OperationsDashboard({
           ? record.affectParadeState
           : !record.affectParadeState;
     const matchesDateRange =
-      record.startDay <= recordFilterEndDay &&
+      (recordFilterEndDay === undefined || record.startDay <= recordFilterEndDay) &&
       (record.endDay === undefined || record.endDay >= recordFilterStartDay);
     const matchesSearch = deferredSearch
       ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)} ${formatStatusLabel(record.status, record.customStatus)}`
