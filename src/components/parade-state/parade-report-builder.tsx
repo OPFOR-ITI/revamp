@@ -28,8 +28,8 @@ import { FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PERSONNEL_ROUTE_PATH } from "@/lib/constants";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import {
-  formatDateLabel,
   getCurrentSingaporeTimeHHmm,
   getTodaySingaporeDateString,
   isValidTimeHHmm,
@@ -59,7 +59,7 @@ function ReportDateField({
 }
 
 async function copyToClipboard(value: string, successMessage: string) {
-  await navigator.clipboard.writeText(value);
+  await copyTextToClipboard(value);
   toast.success(successMessage);
 }
 

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import {
   CalendarDays,
   ClipboardList,
+  ClipboardMinus,
   ScrollText,
   ShieldCheck,
   UserRound,
@@ -25,6 +26,8 @@ function getNavIcon(icon: AppNavIcon) {
       return <ShieldCheck className="size-4" />;
     case "record-log":
       return <ClipboardList className="size-4" />;
+    case "conducts":
+      return <ClipboardMinus className="size-4" />;
     case "duties":
       return <CalendarDays className="size-4" />;
     case "report":

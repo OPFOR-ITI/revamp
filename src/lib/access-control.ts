@@ -5,6 +5,9 @@ export const APP_PERMISSION_VALUES = [
   "duties.view",
   "duties.manage",
   "paradeReport.view",
+  "conducts.view",
+  "conducts.manage",
+  "conductAttendance.manage",
   "userManagement.manage",
 ] as const;
 
@@ -20,7 +23,13 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 const ROLE_PERMISSIONS: Record<UserRole, readonly AppPermission[]> = {
   admin: APP_PERMISSION_VALUES,
-  operator: ["statusRecords.manage", "duties.view", "paradeReport.view"],
+  operator: [
+    "statusRecords.manage",
+    "duties.view",
+    "paradeReport.view",
+    "conducts.view",
+    "conductAttendance.manage",
+  ],
   dutyAdmin: ["duties.view", "duties.manage"],
 };
 
@@ -74,6 +83,10 @@ export function getDefaultAuthorizedPath(roles: readonly UserRole[]) {
 
   if (hasPermission(roles, "paradeReport.view")) {
     return "/parade-state";
+  }
+
+  if (hasPermission(roles, "conducts.view")) {
+    return "/conducts";
   }
 
   if (hasPermission(roles, "userManagement.manage")) {

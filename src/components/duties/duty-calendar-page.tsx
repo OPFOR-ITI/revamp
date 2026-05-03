@@ -91,7 +91,6 @@ import {
 } from "@/lib/date";
 import { cn } from "@/lib/utils";
 import {
-  formatDesignation,
   getPersonnelDisplayName,
   personnelRecordSchema,
   type PersonnelRecord,
@@ -188,9 +187,6 @@ const DUTY_FILTER_ITEMS: { label: string; key: DutyColorKey }[] = [
   { label: "Custom", key: "CUSTOM" },
 ];
 
-const ALL_DUTY_FILTER_KEYS = new Set<DutyColorKey>(
-  DUTY_FILTER_ITEMS.map((item) => item.key),
-);
 const DEFAULT_DUTY_FILTER_KEYS = new Set<DutyColorKey>(["CDO", "CDS", "COS"]);
 
 const DUTY_DOT_BG: Record<DutyColorKey, string> = {

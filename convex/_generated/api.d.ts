@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
+import type * as conducts from "../conducts.js";
 import type * as duties from "../duties.js";
 import type * as http from "../http.js";
 import type * as paradeState from "../paradeState.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
+  conducts: typeof conducts;
   duties: typeof duties;
   http: typeof http;
   paradeState: typeof paradeState;

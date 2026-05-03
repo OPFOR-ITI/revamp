@@ -76,7 +76,7 @@ export const TEMPORAL_BUCKET_COLORS: Record<TemporalBucket, string> = {
 };
 
 export function formatDateLabel(value: string) {
-  return format(parseISO(value), "dd MMM yy");
+  return format(parseISO(value), "ddMMyy");
 }
 
 export function formatTimestampLabel(timestamp: number) {

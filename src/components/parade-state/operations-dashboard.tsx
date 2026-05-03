@@ -628,6 +628,7 @@ function RecordDialog({
     personnelLoading || !!personnelError || personnel.length === 0;
   const isAddMode = mode === "add";
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open) {
       form.reset(getEmptyRecordFormValues());
@@ -644,6 +645,7 @@ function RecordDialog({
 
     form.reset(getEmptyRecordFormValues());
   }, [form, mode, open, record]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!isOtherStatus(selectedStatus)) {
@@ -772,7 +774,7 @@ function RecordDialog({
               remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
             });
             successCount++;
-          } catch (error) {
+          } catch {
             failedNames.push(person.name);
           }
         }

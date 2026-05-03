@@ -89,4 +89,47 @@ export default defineSchema({
       "personnelKey",
       "dutyTypeNormalized",
     ]),
+
+  conducts: defineTable({
+    name: v.string(),
+    date: v.string(),
+    conductDay: v.number(),
+    numberOfPeriods: v.number(),
+    description: v.optional(v.string()),
+    attendanceInitializedAt: v.optional(v.number()),
+    createdByName: v.string(),
+    createdByEmail: v.string(),
+    createdByAuthUserId: v.string(),
+    updatedByName: v.string(),
+    updatedByEmail: v.string(),
+    updatedByAuthUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_conductDay", ["conductDay"])
+    .index("by_createdAt", ["createdAt"]),
+
+  conductNominalRollSnapshots: defineTable({
+    snapshotDate: v.string(),
+    snapshotDay: v.number(),
+    personnelKey: v.string(),
+    rank: v.string(),
+    name: v.string(),
+    platoon: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_snapshotDay", ["snapshotDay"])
+    .index("by_snapshotDate_and_personnelKey", ["snapshotDate", "personnelKey"]),
+
+  conductAbsentees: defineTable({
+    conductId: v.id("conducts"),
+    personnelKey: v.string(),
+    rank: v.string(),
+    name: v.string(),
+    platoon: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_conductId", ["conductId"])
+    .index("by_conductId_and_personnelKey", ["conductId", "personnelKey"]),
 });

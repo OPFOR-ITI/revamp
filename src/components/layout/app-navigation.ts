@@ -5,6 +5,7 @@ export type AppNavIcon =
   | "current-state"
   | "record-log"
   | "report"
+  | "conducts"
   | "duties"
   | "approvals"
   | "pending";
@@ -13,6 +14,7 @@ export type AppNavItemId =
   | "current-state"
   | "record-log"
   | "parade-state"
+  | "conducts"
   | "duty-calendar"
   | "user-approvals"
   | "approval-status";
@@ -71,6 +73,21 @@ export function getPrimaryNavGroups({
           href: "/parade-state",
           icon: "report",
           active: activeItem === "parade-state",
+        },
+      ],
+    });
+  }
+
+  if (hasPermission(roles, "conducts.view")) {
+    groups.push({
+      label: "Conducts",
+      items: [
+        {
+          id: "conducts",
+          label: "Conduct Tracking",
+          href: "/conducts",
+          icon: "conducts",
+          active: activeItem === "conducts",
         },
       ],
     });
