@@ -113,6 +113,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DateStepperField } from "@/components/ui/date-stepper-field";
 import {
   MAX_CUSTOM_STATUS_LENGTH,
@@ -137,6 +142,8 @@ import {
   getTemporalBucketForDayRange,
   getTodaySingaporeDateString,
   getTodaySingaporeDayIndex,
+  TemporalBucket,
+  TEMPORAL_BUCKET_COLORS,
 } from "@/lib/date";
 import { authClient } from "@/lib/auth-client";
 import { hasPermission } from "@/lib/access-control";
@@ -289,6 +296,18 @@ function getRecordTemporalBucket(record: ParadeStateRecordDoc) {
     record.startDay,
     record.endDay,
     getTodaySingaporeDayIndex(),
+  );
+}
+
+function TemporalBucketDot({ bucket }: { bucket: TemporalBucket }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className={`inline-block size-2 shrink-0 cursor-default rounded-full ${TEMPORAL_BUCKET_COLORS[bucket]}`}
+        aria-label={bucket}
+      />
+      <TooltipContent side="top">{bucket}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1345,8 +1364,6 @@ function RecordLogMobileCard({
           status={record.status}
           customStatus={record.customStatus}
         />
-        {isPermanentRecord(record) ? <Badge variant="outline">Permanent</Badge> : null}
-        <Badge variant="outline">{getRecordTemporalBucket(record)}</Badge>
         <Badge
           variant={record.affectParadeState ? "outline" : "default"}
           className={record.affectParadeState ? "" : "bg-emerald-800 text-white"}
@@ -1356,9 +1373,12 @@ function RecordLogMobileCard({
       </div>
 
       <div className="mt-4 space-y-3 text-sm">
-        <div>
+        <div className="relative">
           <p className="font-medium text-zinc-950">{formatRecordPeriod(record)}</p>
           <p className="text-muted-foreground">{formatRemarks(record.remarks)}</p>
+          <span className="absolute right-0 top-0">
+            <TemporalBucketDot bucket={getRecordTemporalBucket(record)} />
+          </span>
         </div>
         <div className="text-muted-foreground">
           <p>Submitted by {record.submittedByName}</p>
@@ -2157,16 +2177,13 @@ export function OperationsDashboard({
                                       status={record.status}
                                       customStatus={record.customStatus}
                                     />
-                                    {isPermanentRecord(record) ? (
-                                      <Badge variant="outline">Permanent</Badge>
-                                    ) : null}
-                                    <Badge variant="outline">
-                                      {getRecordTemporalBucket(record)}
-                                    </Badge>
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  <div className="min-w-44">
+                                  <div className="relative min-w-44 pr-3">
+                                    <span className="absolute right-0 top-0.5">
+                                      <TemporalBucketDot bucket={getRecordTemporalBucket(record)} />
+                                    </span>
                                     <p>{formatRecordPeriod(record)}</p>
                                     <p className="text-xs text-muted-foreground">
                                       {formatRemarks(record.remarks)}

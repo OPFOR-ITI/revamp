@@ -56,15 +56,24 @@ export function getTemporalBucketForDayRange(
   targetDay: number,
 ) {
   if (isActiveOnDayRange(startDay, endDay, targetDay)) {
-    return "active" as const;
+    return "Active" as const;
   }
 
   if (endDay !== undefined && endDay < targetDay) {
-    return "past" as const;
+    return "Past" as const;
   }
 
-  return "future" as const;
+  return "Future" as const;
 }
+
+export type TemporalBucket = "Active" | "Past" | "Future";
+
+
+export const TEMPORAL_BUCKET_COLORS: Record<TemporalBucket, string> = {
+  Active: "bg-emerald-500",
+  Past: "bg-zinc-400",
+  Future: "bg-amber-400",
+};
 
 export function formatDateLabel(value: string) {
   return format(parseISO(value), "dd MMM yy");
