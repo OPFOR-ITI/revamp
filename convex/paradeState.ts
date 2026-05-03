@@ -7,6 +7,7 @@ import {
   doesStatusAffectParadeState,
   isOtherStatus,
   isPermanentRecord,
+  shouldShowOutOfCampToggle,
   type Status,
 } from "../src/lib/constants";
 import {
@@ -65,6 +66,10 @@ function resolveParadeStateImpact(
       throw new ConvexError("Select whether the custom status affects parade state.");
     }
 
+    return affectParadeState;
+  }
+
+  if (shouldShowOutOfCampToggle(status) && affectParadeState !== undefined) {
     return affectParadeState;
   }
 

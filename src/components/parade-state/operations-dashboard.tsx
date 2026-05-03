@@ -124,6 +124,7 @@ import {
   getStatusRecordPeriodConfig,
   isOtherStatus,
   isPermanentRecord,
+  shouldShowOutOfCampToggle,
   type Status,
   type UserRole,
 } from "@/lib/constants";
@@ -617,18 +618,19 @@ function RecordDialog({
   }, [form, mode, open, record]);
 
   useEffect(() => {
-    if (isOtherStatus(selectedStatus)) {
-      return;
+    if (!isOtherStatus(selectedStatus)) {
+      form.setValue("customStatus", "", {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
     }
 
-    form.setValue("customStatus", "", {
-      shouldDirty: false,
-      shouldValidate: false,
-    });
-    form.setValue("affectParadeState", false, {
-      shouldDirty: false,
-      shouldValidate: false,
-    });
+    if (!shouldShowOutOfCampToggle(selectedStatus)) {
+      form.setValue("affectParadeState", false, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }
   }, [form, selectedStatus]);
 
   useEffect(() => {
@@ -725,7 +727,7 @@ function RecordDialog({
           customStatus: isOtherStatus(values.status)
             ? values.customStatus?.trim() || undefined
             : undefined,
-          affectParadeState: isOtherStatus(values.status)
+          affectParadeState: shouldShowOutOfCampToggle(values.status)
             ? values.affectParadeState
             : undefined,
           isPermanent: resolvedPeriod.isPermanent,
@@ -746,7 +748,7 @@ function RecordDialog({
           customStatus: isOtherStatus(values.status)
             ? values.customStatus?.trim() || undefined
             : undefined,
-          affectParadeState: isOtherStatus(values.status)
+          affectParadeState: shouldShowOutOfCampToggle(values.status)
             ? values.affectParadeState
             : undefined,
           isPermanent: resolvedPeriod.isPermanent,
@@ -887,6 +889,24 @@ function RecordDialog({
                   })
                 }
               />
+            ) : shouldShowOutOfCampToggle(selectedStatus) ? (
+              <FormItem>
+                <div className="flex h-full items-center justify-between rounded-xl border border-border px-3 py-2.5">
+                  <FormLabel>Out of camp?</FormLabel>
+                  <div className="flex items-center gap-2">
+                    <ImpactBadge affectsParadeState={!!affectParadeState} />
+                    <Switch
+                      checked={!!affectParadeState}
+                      onCheckedChange={(value) =>
+                        form.setValue("affectParadeState", value, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </FormItem>
             ) : null}
 
             <div

@@ -1,36 +1,36 @@
 export const STATUS_DEFINITIONS = [
-  { value: "MC", affectsParadeState: true },
-  { value: "RIB", affectsParadeState: true },
-  { value: "LD", affectsParadeState: false },
-  { value: "EX RMJ", affectsParadeState: false },
-  { value: "OFF", affectsParadeState: true },
-  { value: "LEAVE", affectsParadeState: true },
-  { value: "RSO", affectsParadeState: true },
-  { value: "MA", affectsParadeState: true },
-  { value: "SEND OUT", affectsParadeState: true },
-  { value: "BOOKED OUT", affectsParadeState: true },
-  { value: "STAY OUT", affectsParadeState: true },
-  { value: "HOSPITALISED", affectsParadeState: true },
-  { value: "EX STAY IN", affectsParadeState: false },
-  { value: "AWOL", affectsParadeState: true },
-  { value: "DB", affectsParadeState: true },
-  { value: "EX CAMO", affectsParadeState: false },
-  { value: "EX FLEGS", affectsParadeState: false },
-  { value: "EX HEAVY LOAD", affectsParadeState: false },
-  { value: "EX SQUATTING", affectsParadeState: false },
-  { value: "EX EXPLOSIVES & PYROTECHNICS", affectsParadeState: false },
-  { value: "EX DUST", affectsParadeState: false },
-  { value: "EX DRIVING", affectsParadeState: false },
-  { value: "EX PUSHUPS", affectsParadeState: false },
-  { value: "EX UPPER LIMB", affectsParadeState: false },
-  { value: "EX PULL UP", affectsParadeState: false },
-  { value: "EX CHIN UP", affectsParadeState: false },
-  { value: "EX HELMET", affectsParadeState: false },
-  { value: "EX LOUD NOISE ENVIRONMENT", affectsParadeState: false },
-  { value: "EX LOUD NOISE VOCATION", affectsParadeState: false },
-  { value: "EX OVERSEAS DEPLOYEMENT", affectsParadeState: false },
-  { value: "JAIL", affectsParadeState: true },
-  { value: "Others", affectsParadeState: false },
+  { value: "MC", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "RIB", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "LD", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX RMJ", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "OFF", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "LEAVE", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "RSO", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "MA", affectsParadeState: false, showOutOfCampToggle: true },
+  { value: "SEND OUT", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "BOOKED OUT", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "STAY OUT", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "HOSPITALISED", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "EX STAY IN", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "AWOL", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "DB", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "EX CAMO", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX FLEGS", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX HEAVY LOAD", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX SQUATTING", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX EXPLOSIVES & PYROTECHNICS", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX DUST", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX DRIVING", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX PUSHUPS", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX UPPER LIMB", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX PULL UP", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX CHIN UP", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX HELMET", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX LOUD NOISE ENVIRONMENT", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX LOUD NOISE VOCATION", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "EX OVERSEAS DEPLOYEMENT", affectsParadeState: false, showOutOfCampToggle: false },
+  { value: "JAIL", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "Others", affectsParadeState: false, showOutOfCampToggle: true },
 ] as const;
 
 export type Status = (typeof STATUS_DEFINITIONS)[number]["value"];
@@ -116,8 +116,19 @@ export const STATUS_AFFECTS_PARADE_STATE = Object.fromEntries(
   ]),
 ) as Record<Status, boolean>;
 
+export const STATUS_SHOW_OUT_OF_CAMP_TOGGLE = Object.fromEntries(
+  STATUS_DEFINITIONS.map((definition) => [
+    definition.value,
+    definition.showOutOfCampToggle,
+  ]),
+) as Record<Status, boolean>;
+
 export function doesStatusAffectParadeState(status: Status) {
   return STATUS_AFFECTS_PARADE_STATE[status];
+}
+
+export function shouldShowOutOfCampToggle(status: Status) {
+  return STATUS_SHOW_OUT_OF_CAMP_TOGGLE[status];
 }
 
 export function isOtherStatus(status: Status) {
