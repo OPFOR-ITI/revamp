@@ -333,6 +333,31 @@ function groupPersonnelByCanonicalIdentity(personnel: PersonnelRecord[]) {
   );
 }
 
+/**
+ * Build a name-only lookup as a fallback for when rank, platoon, or
+ * designation have changed in the nominal roll but the person still exists.
+ * Names that appear more than once are excluded to avoid ambiguous matches.
+ */
+function groupPersonnelByName(personnel: PersonnelRecord[]) {
+  const countByName = new Map<string, number>();
+  const mapByName = new Map<string, PersonnelRecord>();
+
+  for (const record of personnel) {
+    const key = normalizeComparableText(record.name);
+    countByName.set(key, (countByName.get(key) ?? 0) + 1);
+    mapByName.set(key, record);
+  }
+
+  // Remove ambiguous entries (more than one person with the same name)
+  for (const [key, count] of countByName) {
+    if (count > 1) {
+      mapByName.delete(key);
+    }
+  }
+
+  return mapByName;
+}
+
 function chooseDutyAssignment(
   assignments: DutyAssignmentDoc[],
   matcher: (assignment: DutyAssignmentDoc) => boolean,
@@ -412,6 +437,7 @@ export function buildParadeReportData({
   const warnings: string[] = [];
   const personnelByKey = groupPersonnelByKey(personnel);
   const personnelByCanonicalIdentity = groupPersonnelByCanonicalIdentity(personnel);
+  const personnelByName = groupPersonnelByName(personnel);
   const knownPlatoons = new Set(PARADE_REPORT_PLATOON_ORDER);
   const activePersonnelRecords = new Map<string, ParadeStateRecordDoc[]>();
   const activeStatusRecords = new Map<string, ParadeStateRecordDoc[]>();
@@ -434,7 +460,8 @@ export function buildParadeReportData({
           record.platoon,
           record.designation,
         ),
-      );
+      ) ??
+      personnelByName.get(normalizeComparableText(record.name));
 
     if (!person) {
       warnings.push(
