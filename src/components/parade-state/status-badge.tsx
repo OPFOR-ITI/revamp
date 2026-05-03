@@ -1,6 +1,9 @@
 import { formatStatusLabel, type Status } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+
+const MAX_STATUS_BADGE_LENGTH = 25;
 
 const statusBadgeClasses: Record<Status, string> = {
   MC: "bg-rose-100 text-rose-900 ring-1 ring-rose-200",
@@ -44,12 +47,31 @@ export function StatusBadge({
   status: Status;
   customStatus?: string;
 }) {
-  return (
+  const label = formatStatusLabel(status, customStatus);
+  const isTruncated = label.length > MAX_STATUS_BADGE_LENGTH;
+  const displayLabel = isTruncated
+    ? `${label.slice(0, MAX_STATUS_BADGE_LENGTH - 1).trimEnd()}…`
+    : label;
+
+  const badge = (
     <Badge
       className={cn("border-transparent font-semibold text-[10px] py-0 tracking-wide", statusBadgeClasses[status])}
       variant="outline"
     >
-      {formatStatusLabel(status, customStatus)}
+      {displayLabel}
     </Badge>
+  );
+
+  if (!isTruncated) {
+    return badge;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="cursor-default" />}>
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }
