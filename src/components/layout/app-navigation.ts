@@ -80,21 +80,6 @@ export function getPrimaryNavGroups({
     });
   }
 
-  if (hasPermission(roles, "conducts.view")) {
-    groups.push({
-      label: "Conducts",
-      items: [
-        {
-          id: "conducts",
-          label: "Conduct Tracking",
-          href: "/conducts",
-          icon: "conducts",
-          active: activeItem === "conducts",
-        },
-      ],
-    });
-  }
-
   if (hasPermission(roles, "duties.view")) {
     groups.push({
       label: "Duty",
@@ -110,18 +95,35 @@ export function getPrimaryNavGroups({
     });
   }
 
-  if (hasPermission(roles, "conducts.manage")) {
+  const canViewConducts = hasPermission(roles, "conducts.view");
+  const canManageConducts = hasPermission(roles, "conducts.manage");
+
+  if (canViewConducts || canManageConducts) {
+    const conductItems: AppNavItem[] = [];
+
+    if (canViewConducts) {
+      conductItems.push({
+        id: "conducts",
+        label: "Conduct Tracking",
+        href: "/conducts",
+        icon: "conducts",
+        active: activeItem === "conducts",
+      });
+    }
+
+    if (canManageConducts) {
+      conductItems.push({
+        id: "trackr-activities",
+        label: "Trackr Activities",
+        href: "/trackr",
+        icon: "trackr",
+        active: activeItem === "trackr-activities",
+      });
+    }
+
     groups.push({
-      label: "Automation",
-      items: [
-        {
-          id: "trackr-activities",
-          label: "Trackr Activities",
-          href: "/trackr",
-          icon: "trackr",
-          active: activeItem === "trackr-activities",
-        },
-      ],
+      label: "Conducts",
+      items: conductItems,
     });
   }
 
