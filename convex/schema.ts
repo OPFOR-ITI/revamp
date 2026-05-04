@@ -132,4 +132,18 @@ export default defineSchema({
   })
     .index("by_conductId", ["conductId"])
     .index("by_conductId_and_personnelKey", ["conductId", "personnelKey"]),
+
+  trackrConducts: defineTable({
+    name: v.string(),
+    trackrActivityId: v.string(),
+    date: v.string(),
+    conductDay: v.number(),
+    conductingUnitName: v.string(),
+    conductingUnitId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_trackrActivityId", ["trackrActivityId"])
+    .index("by_conductDay", ["conductDay"])
+    .index("by_createdAt", ["createdAt"]),
 });

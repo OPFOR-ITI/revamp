@@ -198,9 +198,6 @@ export function ConductFormDialog({
                 }
                 className="h-10"
               />
-              <FormDescription>
-                Informational only. Attendance is still tracked once per conduct.
-              </FormDescription>
               <FormMessage>
                 {form.formState.errors.numberOfPeriods?.message}
               </FormMessage>

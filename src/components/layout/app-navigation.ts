@@ -7,6 +7,7 @@ export type AppNavIcon =
   | "report"
   | "conducts"
   | "duties"
+  | "trackr"
   | "approvals"
   | "pending";
 
@@ -16,6 +17,7 @@ export type AppNavItemId =
   | "parade-state"
   | "conducts"
   | "duty-calendar"
+  | "trackr-activities"
   | "user-approvals"
   | "approval-status";
 
@@ -103,6 +105,21 @@ export function getPrimaryNavGroups({
           href: "/duties",
           icon: "duties",
           active: activeItem === "duty-calendar",
+        },
+      ],
+    });
+  }
+
+  if (hasPermission(roles, "conducts.manage")) {
+    groups.push({
+      label: "Automation",
+      items: [
+        {
+          id: "trackr-activities",
+          label: "Trackr Activities",
+          href: "/trackr",
+          icon: "trackr",
+          active: activeItem === "trackr-activities",
         },
       ],
     });

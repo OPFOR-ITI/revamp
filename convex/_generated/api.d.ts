@@ -15,6 +15,7 @@ import type * as duties from "../duties.js";
 import type * as http from "../http.js";
 import type * as paradeState from "../paradeState.js";
 import type * as statusValidator from "../statusValidator.js";
+import type * as trackrConducts from "../trackrConducts.js";
 import type * as users from "../users.js";
 
 import type {
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   paradeState: typeof paradeState;
   statusValidator: typeof statusValidator;
+  trackrConducts: typeof trackrConducts;
   users: typeof users;
 }>;
 

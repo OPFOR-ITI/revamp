@@ -5,6 +5,7 @@ import {
   CalendarDays,
   ClipboardList,
   ClipboardMinus,
+  Radar,
   ScrollText,
   ShieldCheck,
   UserRound,
@@ -30,6 +31,8 @@ function getNavIcon(icon: AppNavIcon) {
       return <ClipboardMinus className="size-4" />;
     case "duties":
       return <CalendarDays className="size-4" />;
+    case "trackr":
+      return <Radar className="size-4" />;
     case "report":
       return <ScrollText className="size-4" />;
     case "pending":

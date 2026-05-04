@@ -59,6 +59,30 @@ Internal Next.js + Convex app for managing parade-state records against a read-o
 - The app never creates, edits, or deletes personnel rows.
 - Parade-state records store personnel details as immutable snapshots.
 - Overlapping active records are allowed and grouped in the current-state view.
+- Trackr automation should stay server-side and use `TRACKR_COOKIE` through `src/lib/trackr.ts`.
+
+## Trackr automation
+
+Set `TRACKR_COOKIE` in your server env. It can be either the full cookie pair
+(`trackr.sid=...`) or just the raw session value.
+
+Example server-side usage:
+
+```ts
+import { getTrackrClient } from "@/lib/trackr";
+
+const trackr = getTrackrClient();
+
+const units = await trackr.listActivityUnits({ isPast: true });
+
+await trackr.submitAttendanceUnits({
+  activityId: "927d1c94-b779-4f16-9a8d-47c512cbfb84",
+  unitIds: ["d370caf4-adda-4785-ae92-166686629e88"],
+});
+```
+
+Use this from route handlers, server components, or server actions. Do not
+import it into client components because it carries your Trackr session cookie.
 
 ## Commands
 
