@@ -5,14 +5,18 @@ import { useQuery } from "convex/react";
 import {
   ClipboardCopy,
   Loader2,
+  Pencil,
   RefreshCw,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { api } from "../../../convex/_generated/api";
 import type { DutyAssignmentDoc } from "@/components/duties/types";
+import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
+import { StatusBadge } from "@/components/parade-state/status-badge";
 import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,9 +30,24 @@ import {
 import { DateStepperField } from "@/components/ui/date-stepper-field";
 import { FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { PERSONNEL_ROUTE_PATH } from "@/lib/constants";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import {
+  doesStatusAffectParadeState,
+  isOtherStatus,
+  shouldShowOutOfCampToggle,
+  STATUS_VALUES,
+  type Status,
+} from "@/lib/constants";
 import {
   getCurrentSingaporeTimeHHmm,
   getTodaySingaporeDateString,
@@ -37,10 +56,19 @@ import {
 import {
   buildParadeReportData,
   formatParadeReportText,
+  type ParadeReportRecord,
 } from "@/lib/parade-report";
 import { personnelRecordSchema, type PersonnelRecord } from "@/lib/personnel";
 
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
+const IN_CAMP_OVERRIDE_VALUE = "__IN_CAMP__" as const;
+type PreviewOverrideStatus = Status | typeof IN_CAMP_OVERRIDE_VALUE;
+type PreviewOverrideRecord = {
+  personnelKey: string;
+  status: PreviewOverrideStatus;
+  customStatus?: string;
+  affectParadeState: boolean;
+};
 
 function ReportDateField({
   value,
@@ -75,6 +103,16 @@ export function ParadeReportBuilder({
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
   const [isCopying, setIsCopying] = useState(false);
+  const [isPreviewEditorOpen, setIsPreviewEditorOpen] = useState(false);
+  const [overridePersonnelKey, setOverridePersonnelKey] = useState("");
+  const [overrideStatus, setOverrideStatus] =
+    useState<PreviewOverrideStatus>(IN_CAMP_OVERRIDE_VALUE);
+  const [overrideCustomStatus, setOverrideCustomStatus] = useState("");
+  const [overrideAffectParadeState, setOverrideAffectParadeState] =
+    useState(false);
+  const [previewOverrides, setPreviewOverrides] = useState<
+    Record<string, PreviewOverrideRecord>
+  >({});
   const autoCopiedRef = useRef(false);
 
   const activeRecords = useQuery(
@@ -148,6 +186,79 @@ export function ParadeReportBuilder({
       : null;
   const isLoadingReport =
     isPersonnelLoading || activeRecords === undefined || dutyAssignments === undefined;
+  const personnelByKey = useMemo(
+    () => new Map(personnel.map((person) => [person.personnelKey, person])),
+    [personnel],
+  );
+  const previewActiveRecords = useMemo(() => {
+    if (activeRecords === undefined) {
+      return undefined;
+    }
+
+    const overrideEntries = Object.values(previewOverrides);
+
+    if (overrideEntries.length === 0) {
+      return activeRecords;
+    }
+
+    const overriddenPersonnelKeys = new Set(
+      overrideEntries.map((override) => override.personnelKey),
+    );
+    const filteredRecords = activeRecords.filter(
+      (record) => !overriddenPersonnelKeys.has(record.personnelKey),
+    );
+    const syntheticRecords: ParadeReportRecord[] = overrideEntries.flatMap(
+      (override, index) => {
+        if (override.status === IN_CAMP_OVERRIDE_VALUE) {
+          return [];
+        }
+
+        const person = personnelByKey.get(override.personnelKey);
+
+        if (!person) {
+          return [];
+        }
+
+        return [
+          {
+            personnelKey: person.personnelKey,
+            rank: person.rank,
+            name: person.name,
+            platoon: person.platoon,
+            designation: person.designation,
+            status: override.status,
+            customStatus: override.customStatus,
+            isPermanent: false,
+            affectParadeState: override.affectParadeState,
+            startDate: selectedDate,
+            endDate: selectedDate,
+            remarks: undefined,
+            createdAt: index,
+            updatedAt: index,
+          },
+        ];
+      },
+    );
+
+    return [...filteredRecords, ...syntheticRecords];
+  }, [activeRecords, personnelByKey, previewOverrides, selectedDate]);
+  const previewOverrideEntries = useMemo(
+    () =>
+      Object.values(previewOverrides).sort((left, right) => {
+        const leftPerson = personnelByKey.get(left.personnelKey);
+        const rightPerson = personnelByKey.get(right.personnelKey);
+
+        if (!leftPerson || !rightPerson) {
+          return left.personnelKey.localeCompare(right.personnelKey);
+        }
+
+        return (
+          leftPerson.rank.localeCompare(rightPerson.rank) ||
+          leftPerson.name.localeCompare(rightPerson.name)
+        );
+      }),
+    [personnelByKey, previewOverrides],
+  );
   const reportState = useMemo(() => {
     if (timeError) {
       return {
@@ -165,7 +276,11 @@ export function ParadeReportBuilder({
       };
     }
 
-    if (!personnel.length || activeRecords === undefined || dutyAssignments === undefined) {
+    if (
+      !personnel.length ||
+      previewActiveRecords === undefined ||
+      dutyAssignments === undefined
+    ) {
       return {
         data: null,
         text: "",
@@ -176,7 +291,7 @@ export function ParadeReportBuilder({
     try {
       const data = buildParadeReportData({
         personnel,
-        activeRecords,
+        activeRecords: previewActiveRecords,
         dutyAssignments,
         paradeDate: selectedDate,
         asAtTime,
@@ -195,11 +310,11 @@ export function ParadeReportBuilder({
       };
     }
   }, [
-    activeRecords,
     asAtTime,
     dutyAssignments,
     personnel,
     personnelError,
+    previewActiveRecords,
     selectedDate,
     timeError,
   ]);
@@ -250,9 +365,94 @@ export function ParadeReportBuilder({
     setPersonnelRefreshKey((value) => value + 1);
   }
 
+  function handleSelectedDateChange(value: string) {
+    setSelectedDate(value);
+    setPreviewOverrides({});
+    setOverridePersonnelKey("");
+  }
+
+  function handleOverrideStatusChange(value: PreviewOverrideStatus) {
+    setOverrideStatus(value);
+
+    if (value === IN_CAMP_OVERRIDE_VALUE) {
+      setOverrideCustomStatus("");
+      setOverrideAffectParadeState(false);
+      return;
+    }
+
+    if (!isOtherStatus(value)) {
+      setOverrideCustomStatus("");
+    }
+
+    if (!shouldShowOutOfCampToggle(value)) {
+      setOverrideAffectParadeState(doesStatusAffectParadeState(value));
+    }
+  }
+
+  function handleApplyPreviewOverride() {
+    if (!overridePersonnelKey) {
+      toast.error("Select a serviceman to edit in the preview.");
+      return;
+    }
+
+    if (
+      overrideStatus !== IN_CAMP_OVERRIDE_VALUE &&
+      isOtherStatus(overrideStatus) &&
+      !overrideCustomStatus.trim()
+    ) {
+      toast.error('Enter the custom status for "Others".');
+      return;
+    }
+
+    const resolvedAffectParadeState =
+      overrideStatus === IN_CAMP_OVERRIDE_VALUE
+        ? false
+        : shouldShowOutOfCampToggle(overrideStatus)
+          ? overrideAffectParadeState
+          : doesStatusAffectParadeState(overrideStatus);
+
+    setPreviewOverrides((current) => ({
+      ...current,
+      [overridePersonnelKey]: {
+        personnelKey: overridePersonnelKey,
+        status: overrideStatus,
+        customStatus:
+          overrideStatus !== IN_CAMP_OVERRIDE_VALUE && isOtherStatus(overrideStatus)
+            ? overrideCustomStatus.trim()
+            : undefined,
+        affectParadeState: resolvedAffectParadeState,
+      },
+    }));
+    setOverridePersonnelKey("");
+  }
+
+  function handleRemovePreviewOverride(personnelKey: string) {
+    setPreviewOverrides((current) => {
+      const next = { ...current };
+      delete next[personnelKey];
+      return next;
+    });
+  }
+
+  function handleClearPreviewOverrides() {
+    setPreviewOverrides({});
+  }
+
   const warnings = reportState.data?.warnings ?? [];
   const nominalRollCount =
     isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
+  const selectedOverridePerson = overridePersonnelKey
+    ? personnelByKey.get(overridePersonnelKey)
+    : undefined;
+  const previewOverrideCount = previewOverrideEntries.length;
+  const shouldShowOverrideCustomStatus =
+    overrideStatus !== IN_CAMP_OVERRIDE_VALUE && isOtherStatus(overrideStatus);
+  const shouldShowOverrideImpactToggle =
+    overrideStatus !== IN_CAMP_OVERRIDE_VALUE &&
+    shouldShowOutOfCampToggle(overrideStatus);
+  const canApplyPreviewOverride =
+    !!overridePersonnelKey &&
+    (!shouldShowOverrideCustomStatus || !!overrideCustomStatus.trim());
 
   return (
     <div className="space-y-4">
@@ -268,7 +468,10 @@ export function ParadeReportBuilder({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
-            <ReportDateField value={selectedDate} onChange={setSelectedDate} />
+            <ReportDateField
+              value={selectedDate}
+              onChange={handleSelectedDateChange}
+            />
 
             <FormItem>
               <FormLabel htmlFor="parade-time">As At</FormLabel>
@@ -341,13 +544,222 @@ export function ParadeReportBuilder({
 
       <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5 rounded-[30px]">
         <CardHeader className="border-b border-emerald-950/10">
-          <CardTitle>Preview</CardTitle>
-          <CardDescription>
-            Review the generated message before copying it into WhatsApp or your
-            ops channel.
-          </CardDescription>
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Preview</CardTitle>
+              <CardDescription>
+                Review the generated message before copying it into WhatsApp or your
+                ops channel.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {previewOverrideCount > 0 ? (
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-amber-950"
+                >
+                  {previewOverrideCount} temporary override
+                  {previewOverrideCount === 1 ? "" : "s"}
+                </Badge>
+              ) : null}
+              <Button
+                type="button"
+                variant={isPreviewEditorOpen ? "secondary" : "outline"}
+                onClick={() => setIsPreviewEditorOpen((value) => !value)}
+                className="h-9"
+              >
+                <Pencil className="size-4" />
+                Edit preview
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="pt-2">
+          {isPreviewEditorOpen ? (
+            <div className="mb-4 rounded-2xl border border-emerald-950/10 bg-emerald-950/[0.03] p-4">
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-zinc-950">
+                      Temporary preview overrides
+                    </p>
+                    <p className="text-sm text-zinc-600">
+                      These changes only affect this preview and copied text. They are
+                      not saved to parade state.
+                    </p>
+                  </div>
+                  {previewOverrideCount > 0 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleClearPreviewOverrides}
+                      className="h-8 px-2 text-zinc-600"
+                    >
+                      Clear all
+                    </Button>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1.3fr)_220px_auto]">
+                  <FormItem>
+                    <FormLabel>Serviceman</FormLabel>
+                    <PersonnelCombobox
+                      personnel={personnel}
+                      value={overridePersonnelKey}
+                      onChange={setOverridePersonnelKey}
+                      disabled={isPersonnelLoading || personnel.length === 0}
+                    />
+                  </FormItem>
+
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select
+                      value={overrideStatus}
+                      onValueChange={(value) =>
+                        handleOverrideStatusChange(value as PreviewOverrideStatus)
+                      }
+                    >
+                      <SelectTrigger className="h-10 w-full bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={IN_CAMP_OVERRIDE_VALUE}>
+                          In Camp
+                        </SelectItem>
+                        {STATUS_VALUES.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      onClick={handleApplyPreviewOverride}
+                      disabled={!canApplyPreviewOverride}
+                      className="h-10 w-full"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+
+                {shouldShowOverrideCustomStatus || shouldShowOverrideImpactToggle ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {shouldShowOverrideCustomStatus ? (
+                      <FormItem>
+                        <FormLabel htmlFor="preview-custom-status">Custom status</FormLabel>
+                        <Input
+                          id="preview-custom-status"
+                          value={overrideCustomStatus}
+                          placeholder="Type the status to display"
+                          onChange={(event) => setOverrideCustomStatus(event.target.value)}
+                          className="h-10 bg-white"
+                        />
+                      </FormItem>
+                    ) : (
+                      <div />
+                    )}
+
+                    {shouldShowOverrideImpactToggle ? (
+                      <FormItem>
+                        <FormLabel>Out of camp?</FormLabel>
+                        <div className="flex h-10 items-center justify-between rounded-lg border border-input bg-white px-3">
+                          <span className="text-sm text-zinc-700">
+                            Treat this override as out of camp
+                          </span>
+                          <Switch
+                            checked={overrideAffectParadeState}
+                            onCheckedChange={setOverrideAffectParadeState}
+                          />
+                        </div>
+                      </FormItem>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {selectedOverridePerson ? (
+                  <p className="text-xs text-zinc-500">
+                    Editing {selectedOverridePerson.rank} {selectedOverridePerson.name} for
+                    the current preview only.
+                  </p>
+                ) : null}
+
+                {previewOverrideCount > 0 ? (
+                  <div className="space-y-2">
+                    {previewOverrideEntries.map((override) => {
+                      const person = personnelByKey.get(override.personnelKey);
+
+                      if (!person) {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          key={override.personnelKey}
+                          className="flex flex-col gap-3 rounded-xl border border-emerald-950/10 bg-white px-3 py-3 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-zinc-950">
+                              {person.rank} {person.name}
+                            </p>
+                            <p className="truncate text-xs text-zinc-500">
+                              {person.platoon}
+                              {person.designation ? ` / ${person.designation}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 self-start md:self-center">
+                            {override.status === IN_CAMP_OVERRIDE_VALUE ? (
+                              <Badge className="bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200">
+                                In Camp
+                              </Badge>
+                            ) : (
+                              <>
+                                <StatusBadge
+                                  status={override.status}
+                                  customStatus={override.customStatus}
+                                />
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    override.affectParadeState
+                                      ? "border-rose-200 bg-rose-50 text-rose-950"
+                                      : "border-emerald-200 bg-emerald-50 text-emerald-950"
+                                  }
+                                >
+                                  {override.affectParadeState ? "Out of Camp" : "In Camp"}
+                                </Badge>
+                              </>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                handleRemovePreviewOverride(override.personnelKey)
+                              }
+                              className="size-8 text-zinc-500"
+                              aria-label={`Remove temporary override for ${person.rank} ${person.name}`}
+                            >
+                              <X className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-emerald-950/15 px-3 py-4 text-sm text-zinc-500">
+                    No temporary overrides applied.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           {isLoadingReport ? (
             <div className="space-y-3">
               <Skeleton className="h-8 w-2/5 rounded-xl" />

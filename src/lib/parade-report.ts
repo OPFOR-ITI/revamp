@@ -52,6 +52,24 @@ export const PARADE_REPORT_TROOPER_RANKS = new Set([
   "CFC",
 ]);
 
+export type ParadeReportRecord = Pick<
+  ParadeStateRecordDoc,
+  | "personnelKey"
+  | "rank"
+  | "name"
+  | "platoon"
+  | "designation"
+  | "status"
+  | "customStatus"
+  | "isPermanent"
+  | "affectParadeState"
+  | "startDate"
+  | "endDate"
+  | "remarks"
+  | "createdAt"
+  | "updatedAt"
+>;
+
 type CompanyOutBucket =
   | "MC"
   | "EX_STAY_IN"
@@ -64,7 +82,7 @@ type CompanyOutBucket =
   | "OTHERS";
 
 type StatusLikeRecord = Pick<
-  ParadeStateRecordDoc,
+  ParadeReportRecord,
   | "rank"
   | "name"
   | "platoon"
@@ -80,8 +98,8 @@ type StatusLikeRecord = Pick<
 
 type PersonnelAbsence = {
   personnel: PersonnelRecord;
-  primaryRecord: ParadeStateRecordDoc;
-  secondaryRecords: ParadeStateRecordDoc[];
+  primaryRecord: ParadeReportRecord;
+  secondaryRecords: ParadeReportRecord[];
   companyBucket: CompanyOutBucket;
 };
 
@@ -195,7 +213,7 @@ function isTrooperRank(rank: string) {
   return PARADE_REPORT_TROOPER_RANKS.has(normalizeComparableText(rank));
 }
 
-function getCompanyBucketForStatus(record: ParadeStateRecordDoc): CompanyOutBucket {
+function getCompanyBucketForStatus(record: ParadeReportRecord): CompanyOutBucket {
   switch (normalizeComparableText(record.status)) {
     case "HOSPITALISED":
       return "HOSPITALISED";
@@ -217,7 +235,7 @@ function getCompanyBucketForStatus(record: ParadeStateRecordDoc): CompanyOutBuck
   }
 }
 
-function comparePrimaryRecords(left: ParadeStateRecordDoc, right: ParadeStateRecordDoc) {
+function comparePrimaryRecords(left: ParadeReportRecord, right: ParadeReportRecord) {
   const bucketDelta =
     PRIMARY_BUCKET_PRECEDENCE[getCompanyBucketForStatus(left)] -
     PRIMARY_BUCKET_PRECEDENCE[getCompanyBucketForStatus(right)];
@@ -299,7 +317,7 @@ function formatAbsenceLine(absence: PersonnelAbsence) {
 
 function formatStatusEntry(
   personnel: PersonnelRecord,
-  records: ParadeStateRecordDoc[],
+  records: ParadeReportRecord[],
 ) {
   return formatPersonLine(
     personnel,
@@ -307,7 +325,7 @@ function formatStatusEntry(
   );
 }
 
-function normalizeOthersBreakdownLabel(record: ParadeStateRecordDoc) {
+function normalizeOthersBreakdownLabel(record: ParadeReportRecord) {
   if (record.status === "Others") {
     return record.customStatus?.trim() || "Others";
   }
@@ -425,7 +443,7 @@ export function buildParadeReportData({
   asAtTime,
 }: {
   personnel: PersonnelRecord[];
-  activeRecords: ParadeStateRecordDoc[];
+  activeRecords: ParadeReportRecord[];
   dutyAssignments: DutyAssignmentDoc[];
   paradeDate: string;
   asAtTime: string;
@@ -439,8 +457,8 @@ export function buildParadeReportData({
   const personnelByCanonicalIdentity = groupPersonnelByCanonicalIdentity(personnel);
   const personnelByName = groupPersonnelByName(personnel);
   const knownPlatoons = new Set(PARADE_REPORT_PLATOON_ORDER);
-  const activePersonnelRecords = new Map<string, ParadeStateRecordDoc[]>();
-  const activeStatusRecords = new Map<string, ParadeStateRecordDoc[]>();
+  const activePersonnelRecords = new Map<string, ParadeReportRecord[]>();
+  const activeStatusRecords = new Map<string, ParadeReportRecord[]>();
 
   for (const person of personnel) {
     if (!knownPlatoons.has(person.platoon as (typeof PARADE_REPORT_PLATOON_ORDER)[number])) {
