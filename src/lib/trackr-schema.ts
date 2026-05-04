@@ -59,6 +59,22 @@ export const trackrAttendanceUnitsPayloadSchema = z.object({
     .min(1, "At least one Trackr unitId is required."),
 });
 
+export const trackrUsersQueryPayloadSchema = z.object({
+  unitIds: z
+    .array(z.string().uuid("Each Trackr unitId must be a valid UUID."))
+    .min(1, "At least one Trackr unitId is required."),
+});
+
+export const trackrUserSchema = z.object({
+  id: z.string().uuid("Trackr user id must be a valid UUID."),
+  name: z.string(),
+  units: z.array(trackrUnitSchema),
+});
+
+export const trackrUsersQueryResponseSchema = z.object({
+  users: z.array(trackrUserSchema),
+});
+
 export type TrackrUnit = z.infer<typeof trackrUnitSchema>;
 export type TrackrCategory = z.infer<typeof trackrCategorySchema>;
 export type TrackrActivity = z.infer<typeof trackrActivitySchema>;
@@ -79,6 +95,13 @@ export type TrackrCreateActivitiesResponse = z.infer<
 >;
 export type TrackrAttendanceUnitsPayload = z.infer<
   typeof trackrAttendanceUnitsPayloadSchema
+>;
+export type TrackrUsersQueryPayload = z.infer<
+  typeof trackrUsersQueryPayloadSchema
+>;
+export type TrackrUser = z.infer<typeof trackrUserSchema>;
+export type TrackrUsersQueryResponse = z.infer<
+  typeof trackrUsersQueryResponseSchema
 >;
 
 export function isTrackrOpforUnitName(value: string) {

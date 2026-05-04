@@ -5,8 +5,11 @@ import {
   trackrCreateActivitiesPayloadSchema,
   trackrCreateActivitiesResponseSchema,
   trackrAttendanceUnitsPayloadSchema,
+  trackrUsersQueryPayloadSchema,
+  trackrUsersQueryResponseSchema,
   type TrackrCreateActivitiesPayload,
   type TrackrAttendanceUnitsPayload,
+  type TrackrUsersQueryPayload,
 } from "@/lib/trackr-schema";
 
 const TRACKR_DEFAULT_BASE_URL = "https://app.trackr.gov.sg";
@@ -193,6 +196,19 @@ export class TrackrClient {
       body: parsedPayload,
       signal,
     });
+  }
+
+  async queryUsers(
+    payload: TrackrUsersQueryPayload,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const parsedPayload = trackrUsersQueryPayloadSchema.parse(payload);
+    const response = await this.request("POST", "/api/v1/users/query", {
+      body: parsedPayload,
+      signal,
+    });
+
+    return trackrUsersQueryResponseSchema.parse(response);
   }
 
   async createActivities(
