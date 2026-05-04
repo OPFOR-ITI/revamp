@@ -80,6 +80,7 @@ import {
   getDutyPresetFromKind,
   isEligibleForDuty,
   isZeroPointDutyPreset,
+  normalizeDutyType,
   resolveDutyPoints,
   sanitizeDutyType,
   type DutyKind,
@@ -114,13 +115,19 @@ function getDutyTypeFromForm(values: DutyAssignmentFormData) {
   return sanitizeDutyType(values.customDutyType ?? "");
 }
 
-function getCreateDefaultValues(dateOfDuty: string): DutyAssignmentFormData {
+function getCreateDefaultValues(
+  dateOfDuty: string,
+  dutyKind: DutyKind = DUTY_PRESETS[0],
+  customDutyType = "",
+): DutyAssignmentFormData {
+  const dutyPreset = getDutyPresetFromKind(dutyKind);
+
   return {
-    dutyKind: DUTY_PRESETS[0],
-    customDutyType: "",
+    dutyKind,
+    customDutyType,
     personnelKey: "",
     dateOfDuty,
-    points: getDefaultDutyPoints(dateOfDuty, DUTY_PRESETS[0]),
+    points: getDefaultDutyPoints(dateOfDuty, dutyPreset),
     isExtra: false,
   };
 }
@@ -172,6 +179,69 @@ function getDutyAssignmentDisplayName(
 ) {
   return formatDutyPersonnelName(
     personnelByKey.get(assignment.personnelKey) ?? assignment,
+  );
+}
+
+function getDutySelectionKey({
+  dateOfDuty,
+  dutyKind,
+  customDutyType,
+}: {
+  dateOfDuty: string;
+  dutyKind: DutyKind;
+  customDutyType?: string;
+}) {
+  const dutyPreset = getDutyPresetFromKind(dutyKind);
+
+  if (dutyPreset) {
+    return `${dateOfDuty}|preset|${dutyPreset}`;
+  }
+
+  return `${dateOfDuty}|custom|${normalizeDutyType(customDutyType ?? "")}`;
+}
+
+function getDutyAssignmentSelectionKey(assignment: DutyAssignmentDoc) {
+  return getDutySelectionKey({
+    dateOfDuty: assignment.dateOfDuty,
+    dutyKind: getDutyKindFromPreset(assignment.dutyPreset),
+    customDutyType: assignment.dutyPreset ? "" : assignment.dutyType,
+  });
+}
+
+function getDutySelectionFromFormValues(
+  values: Pick<DutyAssignmentFormData, "dateOfDuty" | "dutyKind" | "customDutyType">,
+) {
+  return {
+    dateOfDuty: values.dateOfDuty,
+    dutyKind: values.dutyKind,
+    customDutyType: values.customDutyType ?? "",
+  };
+}
+
+function getDutySelectionFromAssignment(assignment: DutyAssignmentDoc) {
+  return getDutySelectionFromFormValues(getEditDefaultValues(assignment));
+}
+
+function findMatchingAssignmentForSelection(
+  assignments: DutyAssignmentDoc[],
+  {
+    dateOfDuty,
+    dutyKind,
+    customDutyType,
+  }: {
+    dateOfDuty: string;
+    dutyKind: DutyKind;
+    customDutyType?: string;
+  },
+) {
+  const selectionKey = getDutySelectionKey({
+    dateOfDuty,
+    dutyKind,
+    customDutyType,
+  });
+
+  return assignments.find(
+    (candidate) => getDutyAssignmentSelectionKey(candidate) === selectionKey,
   );
 }
 
@@ -322,13 +392,27 @@ function DutyAssignmentDialog({
   const createAssignment = useMutation(api.duties.createAssignment);
   const updateAssignment = useMutation(api.duties.updateAssignment);
   const deleteAssignment = useMutation(api.duties.deleteAssignment);
+  const initialFormValues = assignment
+    ? getEditDefaultValues(assignment)
+    : getCreateDefaultValues(initialDate);
   const form = useForm<DutyAssignmentFormData>({
     resolver: zodResolver(dutyAssignmentFormSchema),
-    defaultValues: getCreateDefaultValues(initialDate),
+    defaultValues: initialFormValues,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [activeAssignment, setActiveAssignment] = useState<DutyAssignmentDoc | null>(
+    assignment,
+  );
+  const [isSelectionDrivenEdit, setIsSelectionDrivenEdit] = useState(
+    Boolean(assignment),
+  );
+  const [slotSelection, setSlotSelection] = useState(() =>
+    assignment
+      ? getDutySelectionFromAssignment(assignment)
+      : getDutySelectionFromFormValues(initialFormValues),
+  );
   const isPointsManualRef = useRef(false);
 
   const selectedDutyKind = useWatch({
@@ -358,6 +442,7 @@ function DutyAssignmentDialog({
 
   const dutyPreset = getDutyPresetFromKind(selectedDutyKind);
   const isZeroPointDuty = isZeroPointDutyPreset(dutyPreset);
+  const selectedSlotKey = getDutySelectionKey(slotSelection);
   const filteredPersonnel = personnel.filter((person) =>
     isEligibleForDuty({
       dutyPreset,
@@ -369,20 +454,83 @@ function DutyAssignmentDialog({
     (person) => person.personnelKey === selectedPersonnelKey,
   );
   const pickerDisabled = personnel.length === 0 || filteredPersonnel.length === 0;
+  const assignmentsForSelectedDate = useQuery(api.duties.listAssignmentsForRange, {
+    fromDate: slotSelection.dateOfDuty || initialDate,
+    toDate: slotSelection.dateOfDuty || initialDate,
+  }) as DutyAssignmentDoc[] | undefined;
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
+    setActiveAssignment(assignment);
+    setIsSelectionDrivenEdit(Boolean(assignment));
+    setConfirmDelete(false);
+
     if (assignment) {
-      form.reset(getEditDefaultValues(assignment));
+      const nextValues = getEditDefaultValues(assignment);
+      form.reset(nextValues);
+      setSlotSelection(getDutySelectionFromFormValues(nextValues));
       isPointsManualRef.current = true;
     } else {
-      form.reset(getCreateDefaultValues(initialDate));
+      const nextValues = getCreateDefaultValues(initialDate);
+      form.reset(nextValues);
+      setSlotSelection(getDutySelectionFromFormValues(nextValues));
       isPointsManualRef.current = false;
     }
   }, [assignment, form, initialDate, open]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !isSelectionDrivenEdit ||
+      assignmentsForSelectedDate === undefined
+    ) {
+      return;
+    }
+
+    if (
+      activeAssignment &&
+      getDutyAssignmentSelectionKey(activeAssignment) === selectedSlotKey
+    ) {
+      return;
+    }
+
+    const matchingAssignment = findMatchingAssignmentForSelection(
+      assignmentsForSelectedDate,
+      slotSelection,
+    );
+
+    setConfirmDelete(false);
+
+    if (matchingAssignment) {
+      setActiveAssignment(matchingAssignment);
+      form.reset(getEditDefaultValues(matchingAssignment));
+      isPointsManualRef.current = true;
+      return;
+    }
+
+    setActiveAssignment(null);
+    form.reset(
+      getCreateDefaultValues(
+        slotSelection.dateOfDuty,
+        slotSelection.dutyKind,
+        slotSelection.dutyKind === "CUSTOM"
+          ? sanitizeDutyType(slotSelection.customDutyType)
+          : "",
+      ),
+    );
+    isPointsManualRef.current = false;
+  }, [
+    activeAssignment,
+    assignmentsForSelectedDate,
+    form,
+    isSelectionDrivenEdit,
+    open,
+    selectedSlotKey,
+    slotSelection,
+  ]);
 
   useEffect(() => {
     if (dutyPreset) {
@@ -392,12 +540,22 @@ function DutyAssignmentDialog({
       });
     }
 
+    const currentPersonnelKey = form.getValues("personnelKey");
+
+    if (!currentPersonnelKey) {
+      return;
+    }
+
+    const currentSelectedPersonnel = personnel.find(
+      (person) => person.personnelKey === currentPersonnelKey,
+    );
+
     if (
-      selectedPersonnel &&
+      currentSelectedPersonnel &&
       !isEligibleForDuty({
         dutyPreset,
-        rank: selectedPersonnel.rank,
-        designation: selectedPersonnel.designation,
+        rank: currentSelectedPersonnel.rank,
+        designation: currentSelectedPersonnel.designation,
       })
     ) {
       form.setValue("personnelKey", "", {
@@ -405,7 +563,7 @@ function DutyAssignmentDialog({
         shouldValidate: true,
       });
     }
-  }, [dutyPreset, form, selectedPersonnel]);
+  }, [dutyPreset, form, personnel, selectedPersonnelKey]);
 
   useEffect(() => {
     if (!selectedDate || isExtra || isPointsManualRef.current) {
@@ -505,9 +663,9 @@ function DutyAssignmentDialog({
     setIsSaving(true);
 
     try {
-      if (assignment) {
+      if (activeAssignment) {
         await updateAssignment({
-          assignmentId: assignment._id,
+          assignmentId: activeAssignment._id,
           ...payload,
         });
         toast.success("Duty assignment updated.");
@@ -527,14 +685,14 @@ function DutyAssignmentDialog({
   }
 
   async function handleDelete() {
-    if (!assignment) {
+    if (!activeAssignment) {
       return;
     }
 
     setIsDeleting(true);
 
     try {
-      await deleteAssignment({ assignmentId: assignment._id });
+      await deleteAssignment({ assignmentId: activeAssignment._id });
       toast.success("Duty assignment deleted.");
       onOpenChange(false);
     } catch (error) {
@@ -551,10 +709,10 @@ function DutyAssignmentDialog({
       <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {assignment ? "Edit Duty Assignment" : "Assign Duty"}
+            {activeAssignment ? "Edit Duty Assignment" : "Assign Duty"}
           </DialogTitle>
           <DialogDescription>
-            {assignment
+            {activeAssignment
               ? "Update the assignee, duty type, date, and points for this duty."
               : "Create a new duty assignment with preset eligibility checks and default points."}
           </DialogDescription>
@@ -570,12 +728,20 @@ function DutyAssignmentDialog({
                 <FormLabel>Duty Type</FormLabel>
                 <Select
                   value={selectedDutyKind}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    const nextDutyKind = value as DutyKind;
+
                     form.setValue("dutyKind", value as DutyKind, {
                       shouldDirty: true,
                       shouldValidate: true,
-                    })
-                  }
+                    });
+                    setSlotSelection((current) => ({
+                      ...current,
+                      dutyKind: nextDutyKind,
+                      customDutyType:
+                        nextDutyKind === "CUSTOM" ? current.customDutyType : "",
+                    }));
+                  }}
                 >
                   <SelectTrigger className="h-10 w-full">
                     <SelectValue placeholder="Select duty type" />
@@ -600,12 +766,18 @@ function DutyAssignmentDialog({
                     value={customDutyType ?? ""}
                     maxLength={100}
                     placeholder="e.g. Guard Duty"
-                    onChange={(event) =>
-                      form.setValue("customDutyType", event.target.value, {
+                    onChange={(event) => {
+                      const nextCustomDutyType = event.target.value;
+
+                      form.setValue("customDutyType", nextCustomDutyType, {
                         shouldDirty: true,
                         shouldValidate: true,
-                      })
-                    }
+                      });
+                      setSlotSelection((current) => ({
+                        ...current,
+                        customDutyType: nextCustomDutyType,
+                      }));
+                    }}
                   />
                   <FormMessage>
                     {form.formState.errors.customDutyType?.message}
@@ -642,12 +814,16 @@ function DutyAssignmentDialog({
             <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <DateField
                 value={selectedDate}
-                onChange={(value) =>
+                onChange={(value) => {
                   form.setValue("dateOfDuty", value, {
                     shouldDirty: true,
                     shouldValidate: true,
-                  })
-                }
+                  });
+                  setSlotSelection((current) => ({
+                    ...current,
+                    dateOfDuty: value,
+                  }));
+                }}
                 error={form.formState.errors.dateOfDuty?.message}
               />
 
@@ -707,7 +883,7 @@ function DutyAssignmentDialog({
               <FormMessage>{form.formState.errors.points?.message}</FormMessage>
             </FormItem>
 
-            {assignment && confirmDelete ? (
+            {activeAssignment && confirmDelete ? (
               <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
                 <p className="text-sm font-medium text-destructive">
                   Delete this duty assignment?
@@ -744,7 +920,7 @@ function DutyAssignmentDialog({
             ) : null}
 
             <DialogFooter className="gap-2">
-              {assignment ? (
+              {activeAssignment ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -764,7 +940,7 @@ function DutyAssignmentDialog({
                 {isSaving ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}
-                {assignment ? "Save changes" : "Create assignment"}
+                {activeAssignment ? "Save changes" : "Create assignment"}
               </Button>
             </DialogFooter>
           </form>

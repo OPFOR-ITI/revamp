@@ -20,6 +20,7 @@ import {
   SlidersHorizontal,
   UserRound,
   X,
+  EllipsisVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1375,7 +1376,7 @@ function RecordActionsMenu({
           size: "sm",
         })}
       >
-        Manage
+        <EllipsisVertical/>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
@@ -2186,25 +2187,6 @@ export function OperationsDashboard({
                           </Select>
                       </div>
 
-                      <div className="min-w-[9rem]">
-                          <Label className="sr-only">Camp state</Label>
-                          <Select
-                            value={impactFilter}
-                            onValueChange={(value) =>
-                              setImpactFilter((value ?? "all") as ImpactFilter)
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
-                              <SelectValue placeholder="Camp state" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All records</SelectItem>
-                              <SelectItem value="impact">Out of camp</SelectItem>
-                              <SelectItem value="no-impact">In camp</SelectItem>
-                            </SelectContent>
-                          </Select>
-                      </div>
-
                       <div className="flex items-center gap-2 rounded-md border border-emerald-950/10 bg-white px-2 py-1">
                         <CompactCalendarFilterField
                           id="record-filter-from"
@@ -2264,7 +2246,6 @@ export function OperationsDashboard({
                               <TableHead>Serviceman</TableHead>
                               <TableHead>Status</TableHead>
                               <TableHead>Date</TableHead>
-                              <TableHead>In/Out Camp</TableHead>
                               <TableHead>Submitted by</TableHead>
                               <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -2300,18 +2281,6 @@ export function OperationsDashboard({
                                       {formatRemarks(record.remarks)}
                                     </p>
                                   </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant={record.affectParadeState ? "outline" : "default"}
-                                    className={
-                                      record.affectParadeState
-                                        ? ""
-                                        : "bg-emerald-800 text-white"
-                                    }
-                                  >
-                                    {record.affectParadeState ? "Out of Camp" : "In Camp"}
-                                  </Badge>
                                 </TableCell>
                                 <TableCell>
                                   <div className="min-w-44">

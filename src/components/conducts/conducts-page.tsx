@@ -442,7 +442,7 @@ export function ConductsPage({
                       type="button"
                       onClick={() => openAttendanceDialog(conduct)}
                     >
-                      {conduct.hasAttendance ? "View Attendance" : "Mark Missed"}
+                      {conduct.hasAttendance ? "View Attendance" : "Mark Attendance"}
                     </Button>
                   ) : null}
 
