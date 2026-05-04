@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import {
-  Activity,
   Clock3,
   Database,
   Loader2,
   ShieldAlert,
-  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -129,7 +127,16 @@ function subscribeToTrackrCookieStore(onStoreChange: () => void) {
 
 export function TrackrActivitiesPage() {
   const importTrackrConducts = useMutation(api.trackrConducts.importTrackrConducts);
-  const storedConducts = useQuery(api.trackrConducts.listTrackrConducts, {});
+  const {
+    results: loadedConducts,
+    status: conductPaginationStatus,
+    loadMore,
+    isLoading: areConductsLoading,
+  } = usePaginatedQuery(
+    api.trackrConducts.listTrackrConducts,
+    {},
+    { initialNumItems: 10 },
+  );
   const storedCookie = useSyncExternalStore(
     subscribeToTrackrCookieStore,
     readStoredTrackrCookie,
@@ -138,18 +145,20 @@ export function TrackrActivitiesPage() {
   const [cookieInput, setCookieInput] = useState<string | null>(null);
   const [includePast, setIncludePast] = useState(true);
   const [lastFetchedCount, setLastFetchedCount] = useState(0);
-  const [lastIgnoredCount, setLastIgnoredCount] = useState(0);
-  const [lastImportedCount, setLastImportedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  const conducts = storedConducts ?? [];
+  const conducts = loadedConducts;
   const cookie = cookieInput ?? storedCookie;
   const hasCookieValue = cookie.trim().length > 0;
-  const totalPages = Math.max(1, Math.ceil(conducts.length / 10));
-  const currentPage = Math.min(page, totalPages);
+  const loadedPages = Math.max(1, Math.ceil(conducts.length / 10));
+  const currentPage = Math.min(page, loadedPages);
   const paginatedConducts = conducts.slice((currentPage - 1) * 10, currentPage * 10);
+  const canLoadMoreConducts = conductPaginationStatus === "CanLoadMore";
+  const isLoadingMoreConducts =
+    conductPaginationStatus === "LoadingFirstPage" ||
+    conductPaginationStatus === "LoadingMore";
 
   function handleStoreCookie() {
     if (!hasCookieValue) {
@@ -158,6 +167,25 @@ export function TrackrActivitiesPage() {
 
     persistTrackrCookie(cookie);
     toast.success("Trackr cookie stored for 45 minutes.");
+  }
+
+  function handlePreviousPage() {
+    setPage((value) => Math.max(1, value - 1));
+  }
+
+  function handleNextPage() {
+    const nextPage = currentPage + 1;
+    const needsMoreRows = nextPage > loadedPages;
+
+    if (needsMoreRows) {
+      if (!canLoadMoreConducts) {
+        return;
+      }
+
+      loadMore(10);
+    }
+
+    setPage(nextPage);
   }
 
   async function handleLoadActivities() {
@@ -195,13 +223,10 @@ export function TrackrActivitiesPage() {
       }
 
       setLastFetchedCount(parsed.data.fetchedCount);
-      setLastIgnoredCount(parsed.data.ignoredCount);
-
       const importResult = await importTrackrConducts({
         activities: parsed.data.activities,
       });
 
-      setLastImportedCount(importResult.importedCount);
       setPage(1);
       toast.success(
         `Imported ${importResult.importedCount} OPFOR conducts. Ignored ${parsed.data.ignoredCount} non-OPFOR activities.`,
@@ -250,7 +275,7 @@ export function TrackrActivitiesPage() {
                 <div className="rounded-2xl border border-emerald-950/10 bg-white/70 px-4 py-3 shadow-sm">
                   <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
                     <Database className="size-3.5" />
-                    Stored
+                    Loaded
                   </div>
                   <p className="mt-2 font-mono text-xs text-zinc-700">
                     {conducts.length}
@@ -357,7 +382,8 @@ export function TrackrActivitiesPage() {
                 OPFOR conduct ledger
               </CardTitle>
               <CardDescription className="mt-1 leading-6 text-zinc-700">
-                Stored Convex records only!
+                Stored Convex records only. This page loads 10 rows first and
+                fetches the next 10 only when you press Next.
               </CardDescription>
             </div>
             <p className="text-xs text-zinc-600">
@@ -419,7 +445,9 @@ export function TrackrActivitiesPage() {
                     colSpan={5}
                     className="py-12 text-center text-sm text-zinc-600"
                   >
-                    Fetch Trackr activities to import OPFOR conducts into Convex.
+                    {areConductsLoading
+                      ? "Loading OPFOR conducts..."
+                      : "Fetch Trackr activities to import OPFOR conducts into Convex."}
                   </TableCell>
                 </TableRow>
               )}
@@ -428,26 +456,25 @@ export function TrackrActivitiesPage() {
 
           <div className="flex items-center justify-between gap-3 border-t border-emerald-950/8 px-1 pt-4">
             <p className="text-xs text-zinc-600">
-              Page {currentPage} of {totalPages}
+              Page {currentPage}
             </p>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setPage((value) => Math.max(1, value - 1));
-                }}
+                onClick={handlePreviousPage}
                 disabled={currentPage <= 1}
               >
                 Previous
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setPage((value) => Math.min(totalPages, value + 1));
-                }}
-                disabled={currentPage >= totalPages}
+                onClick={handleNextPage}
+                disabled={
+                  isLoadingMoreConducts ||
+                  (currentPage >= loadedPages && !canLoadMoreConducts)
+                }
               >
-                Next
+                {isLoadingMoreConducts ? "Loading..." : "Next"}
               </Button>
             </div>
           </div>

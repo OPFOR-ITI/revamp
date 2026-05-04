@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 
 import {
   dateStringToDayIndex,
@@ -71,16 +72,6 @@ function normalizeTrackrActivity(activity: TrackrActivity) {
   };
 }
 
-function sortTrackrConductsDescending<
-  T extends { conductDay: number; updatedAt: number; createdAt: number },
->(left: T, right: T) {
-  return (
-    right.conductDay - left.conductDay ||
-    right.updatedAt - left.updatedAt ||
-    right.createdAt - left.createdAt
-  );
-}
-
 export const importTrackrConducts = mutation({
   args: {
     activities: v.array(trackrActivityImportValidator),
@@ -138,18 +129,19 @@ export const importTrackrConducts = mutation({
 });
 
 export const listTrackrConducts = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
     await ensureCurrentUser(ctx, {
       requireApproved: true,
       requirePermission: "conducts.manage",
     });
 
-    const conducts = await ctx.db
+    return await ctx.db
       .query("trackrConducts")
-      .withIndex("by_createdAt", (q) => q.gt("createdAt", 0))
-      .collect();
-
-    return conducts.sort(sortTrackrConductsDescending);
+      .withIndex("by_conductDay")
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
