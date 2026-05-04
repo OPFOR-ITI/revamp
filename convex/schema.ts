@@ -1,6 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+import {
+  paradeStateSnapshotDutyAssignmentValidator,
+  paradeStateSnapshotPersonnelValidator,
+  paradeStateSnapshotRecordValidator,
+} from "./paradeStateSnapshotValidators";
 import { statusValidator } from "./statusValidator";
 
 export default defineSchema({
@@ -56,6 +61,22 @@ export default defineSchema({
     .index("by_endDay", ["endDay"])
     .index("by_createdAt", ["createdAt"])
     .index("by_status", ["status"]),
+
+  paradeStateSnapshots: defineTable({
+    snapshotDate: v.string(),
+    snapshotDay: v.number(),
+    asAtTime: v.string(),
+    personnel: v.array(paradeStateSnapshotPersonnelValidator),
+    activeRecords: v.array(paradeStateSnapshotRecordValidator),
+    dutyAssignments: v.array(paradeStateSnapshotDutyAssignmentValidator),
+    savedByName: v.string(),
+    savedByEmail: v.string(),
+    savedByAuthUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_snapshotDate", ["snapshotDate"])
+    .index("by_snapshotDay", ["snapshotDay"]),
 
   dutyAssignments: defineTable({
     personnelKey: v.string(),

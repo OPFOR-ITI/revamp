@@ -70,6 +70,24 @@ export type ParadeReportRecord = Pick<
   | "updatedAt"
 >;
 
+export type ParadeReportDutyAssignment = Pick<
+  DutyAssignmentDoc,
+  | "personnelKey"
+  | "rank"
+  | "name"
+  | "platoon"
+  | "designation"
+  | "dutyType"
+  | "dutyTypeNormalized"
+  | "dutyPreset"
+  | "dateOfDuty"
+  | "dutyDay"
+  | "points"
+  | "isExtra"
+  | "createdAt"
+  | "updatedAt"
+>;
+
 type CompanyOutBucket =
   | "MC"
   | "EX_STAY_IN"
@@ -378,8 +396,8 @@ function groupPersonnelByName(personnel: PersonnelRecord[]) {
 }
 
 function chooseDutyAssignment(
-  assignments: DutyAssignmentDoc[],
-  matcher: (assignment: DutyAssignmentDoc) => boolean,
+  assignments: ParadeReportDutyAssignment[],
+  matcher: (assignment: ParadeReportDutyAssignment) => boolean,
 ) {
   return assignments
     .filter(matcher)
@@ -392,11 +410,13 @@ function chooseDutyAssignment(
     })[0];
 }
 
-function formatDutyAssignee(assignment?: DutyAssignmentDoc) {
+function formatDutyAssignee(assignment?: ParadeReportDutyAssignment) {
   return assignment ? `${assignment.rank} ${assignment.name}` : "[UNASSIGNED]";
 }
 
-function resolveDutyPersonnel(dutyAssignments: DutyAssignmentDoc[]): ParadeDutyPersonnel {
+function resolveDutyPersonnel(
+  dutyAssignments: ParadeReportDutyAssignment[],
+): ParadeDutyPersonnel {
   const cdoAssignment =
     chooseDutyAssignment(
       dutyAssignments,
@@ -445,7 +465,7 @@ export function buildParadeReportData({
 }: {
   personnel: PersonnelRecord[];
   activeRecords: ParadeReportRecord[];
-  dutyAssignments: DutyAssignmentDoc[];
+  dutyAssignments: ParadeReportDutyAssignment[];
   paradeDate: string;
   asAtTime: string;
 }): ParadeReportData {

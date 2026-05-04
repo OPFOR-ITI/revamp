@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   ClipboardCopy,
   Loader2,
   Pencil,
   RefreshCw,
+  Save,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -18,7 +20,10 @@ import type { DutyAssignmentDoc } from "@/components/duties/types";
 import { BulkSelectionList } from "@/components/parade-state/bulk-selection-list";
 import { PersonnelMultiCombobox } from "@/components/parade-state/personnel-multi-combobox";
 import { StatusBadge } from "@/components/parade-state/status-badge";
-import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
+import type {
+  ParadeStateRecordDoc,
+  ParadeStateSnapshotDoc,
+} from "@/components/parade-state/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +34,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DateStepperField } from "@/components/ui/date-stepper-field";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -57,6 +70,7 @@ import {
 import {
   buildParadeReportData,
   formatParadeReportText,
+  type ParadeReportDutyAssignment,
   type ParadeReportRecord,
 } from "@/lib/parade-report";
 import { personnelRecordSchema, type PersonnelRecord } from "@/lib/personnel";
@@ -73,6 +87,79 @@ type PreviewOverrideRecord = {
 
 function normalizePersonnelName(value: string) {
   return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+async function loadPersonnelFromRoute() {
+  const response = await fetch(PERSONNEL_ROUTE_PATH, {
+    cache: "no-store",
+  });
+  const json = (await response.json()) as PersonnelRecord[] | PersonnelRouteError;
+
+  if (!response.ok) {
+    throw new Error(
+      "error" in json && json.error?.message
+        ? json.error.message
+        : "Unable to load personnel.",
+    );
+  }
+
+  const parsed = z.array(personnelRecordSchema).safeParse(json);
+
+  if (!parsed.success) {
+    throw new Error("Personnel response shape was invalid.");
+  }
+
+  return parsed.data;
+}
+
+function toSnapshotPersonnel(personnel: PersonnelRecord[]) {
+  return personnel.map((person) => ({
+    personnelKey: person.personnelKey,
+    rank: person.rank,
+    name: person.name,
+    platoon: person.platoon,
+    designation: person.designation,
+    alias: person.alias,
+    label: person.label,
+  }));
+}
+
+function toSnapshotActiveRecords(records: ParadeStateRecordDoc[]) {
+  return records.map((record) => ({
+    personnelKey: record.personnelKey,
+    rank: record.rank,
+    name: record.name,
+    platoon: record.platoon,
+    designation: record.designation,
+    status: record.status,
+    customStatus: record.customStatus,
+    isPermanent: record.isPermanent,
+    affectParadeState: record.affectParadeState,
+    startDate: record.startDate,
+    endDate: record.endDate,
+    remarks: record.remarks,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }));
+}
+
+function toSnapshotDutyAssignments(assignments: DutyAssignmentDoc[]) {
+  return assignments.map((assignment) => ({
+    personnelKey: assignment.personnelKey,
+    rank: assignment.rank,
+    name: assignment.name,
+    platoon: assignment.platoon,
+    designation: assignment.designation,
+    dutyType: assignment.dutyType,
+    dutyTypeNormalized: assignment.dutyTypeNormalized,
+    dutyPreset: assignment.dutyPreset,
+    dateOfDuty: assignment.dateOfDuty,
+    dutyDay: assignment.dutyDay,
+    points: assignment.points,
+    isExtra: assignment.isExtra,
+    createdAt: assignment.createdAt,
+    updatedAt: assignment.updatedAt,
+  }));
 }
 
 function ReportDateField({
@@ -96,11 +183,94 @@ async function copyToClipboard(value: string, successMessage: string) {
   toast.success(successMessage);
 }
 
+function DeleteSnapshotDialog({
+  open,
+  onOpenChange,
+  snapshotDate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  snapshotDate: string;
+}) {
+  const deleteSnapshot = useMutation(api.paradeState.deleteSnapshot);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleDelete() {
+    setIsSubmitting(true);
+
+    try {
+      await deleteSnapshot({ date: snapshotDate });
+      toast.success("Snapshot deleted.");
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to delete the snapshot.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Delete Saved Snapshot</DialogTitle>
+          <DialogDescription>
+            This removes the saved parade snapshot for {snapshotDate}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <p className="font-medium">
+              If the nominal roll changed since this snapshot was saved, deleting it will
+              make the parade state for that date inaccurate and unusable. Try manually overwriting the preview
+            </p>
+            <p className="mt-2">
+              After deletion, the page will fall back to the current live nominal roll,
+              status records, and duties. This cannot be reversed after that point.
+            </p>
+          </div>
+
+          <p className="text-sm text-zinc-600">
+            Only continue if you are certain the saved snapshot is no longer needed.
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+            className="w-full sm:w-auto"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => void handleDelete()}
+            disabled={isSubmitting}
+            className="w-full sm:w-auto"
+          >
+            {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : null}
+            Delete snapshot
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ParadeReportBuilder({
   autoCopyOnReady = false,
 }: {
   autoCopyOnReady?: boolean;
 }) {
+  const convex = useConvex();
+  const saveSnapshot = useMutation(api.paradeState.saveSnapshot);
   const [selectedDate, setSelectedDate] = useState(getTodaySingaporeDateString());
   const [asAtTime, setAsAtTime] = useState(getCurrentSingaporeTimeHHmm());
   const [personnel, setPersonnel] = useState<PersonnelRecord[]>([]);
@@ -108,6 +278,8 @@ export function ParadeReportBuilder({
   const [personnelRefreshKey, setPersonnelRefreshKey] = useState(0);
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
   const [isCopying, setIsCopying] = useState(false);
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
+  const [isDeleteSnapshotOpen, setIsDeleteSnapshotOpen] = useState(false);
   const [isPreviewEditorOpen, setIsPreviewEditorOpen] = useState(false);
   const [overridePersonnelKeys, setOverridePersonnelKeys] = useState<string[]>([]);
   const [overrideStatus, setOverrideStatus] =
@@ -119,44 +291,52 @@ export function ParadeReportBuilder({
     Record<string, PreviewOverrideRecord>
   >({});
   const autoCopiedRef = useRef(false);
+  const snapshot = useQuery(api.paradeState.getSnapshotForDate, {
+    date: selectedDate,
+  }) as ParadeStateSnapshotDoc | null | undefined;
 
   const activeRecords = useQuery(
     api.paradeState.listActiveRecordsForDate,
-    { date: selectedDate },
+    snapshot === null ? { date: selectedDate } : "skip",
   ) as ParadeStateRecordDoc[] | undefined;
-  const dutyAssignments = useQuery(api.duties.listAssignmentsForRange, {
-    fromDate: selectedDate,
-    toDate: selectedDate,
-  }) as DutyAssignmentDoc[] | undefined;
+  const liveDutyAssignments = useQuery(
+    api.duties.listAssignmentsForRange,
+    snapshot === null
+      ? {
+          fromDate: selectedDate,
+          toDate: selectedDate,
+        }
+      : "skip",
+  ) as DutyAssignmentDoc[] | undefined;
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let cancelled = false;
+
+    if (snapshot === undefined) {
+      setIsPersonnelLoading(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (snapshot) {
+      setPersonnel(snapshot.personnel);
+      setPersonnelError(null);
+      setIsPersonnelLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadPersonnel() {
       setIsPersonnelLoading(true);
 
       try {
-        const response = await fetch(PERSONNEL_ROUTE_PATH, {
-          cache: "no-store",
-        });
-        const json = (await response.json()) as PersonnelRecord[] | PersonnelRouteError;
-
-        if (!response.ok) {
-          throw new Error(
-            "error" in json && json.error?.message
-              ? json.error.message
-              : "Unable to load personnel.",
-          );
-        }
-
-        const parsed = z.array(personnelRecordSchema).safeParse(json);
-
-        if (!parsed.success) {
-          throw new Error("Personnel response shape was invalid.");
-        }
+        const loadedPersonnel = await loadPersonnelFromRoute();
 
         if (!cancelled) {
-          setPersonnel(parsed.data);
+          setPersonnel(loadedPersonnel);
           setPersonnelError(null);
         }
       } catch (error) {
@@ -179,7 +359,14 @@ export function ParadeReportBuilder({
     return () => {
       cancelled = true;
     };
-  }, [personnelRefreshKey]);
+  }, [personnelRefreshKey, snapshot]);
+
+  useEffect(() => {
+    if (snapshot?.asAtTime) {
+      setAsAtTime(snapshot.asAtTime);
+    }
+  }, [snapshot?._id, snapshot?.updatedAt, snapshot?.asAtTime]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     autoCopiedRef.current = false;
@@ -189,34 +376,44 @@ export function ParadeReportBuilder({
     asAtTime.length > 0 && !isValidTimeHHmm(asAtTime)
       ? 'Use 24-hour "HHmm" format, for example 0830 or 1745.'
       : null;
+  const snapshotExists = snapshot !== null && snapshot !== undefined;
+  const reportPersonnel = snapshot?.personnel ?? personnel;
+  const reportActiveRecords = snapshot?.activeRecords ?? activeRecords;
+  const reportDutyAssignments =
+    (snapshot?.dutyAssignments ?? liveDutyAssignments) as
+      | ParadeReportDutyAssignment[]
+      | undefined;
   const isLoadingReport =
-    isPersonnelLoading || activeRecords === undefined || dutyAssignments === undefined;
+    snapshot === undefined ||
+    isPersonnelLoading ||
+    reportActiveRecords === undefined ||
+    reportDutyAssignments === undefined;
   const personnelByKey = useMemo(
-    () => new Map(personnel.map((person) => [person.personnelKey, person])),
-    [personnel],
+    () => new Map(reportPersonnel.map((person) => [person.personnelKey, person])),
+    [reportPersonnel],
   );
   const personnelByName = useMemo(
     () =>
       new Map(
-        personnel.map((person) => [normalizePersonnelName(person.name), person]),
+        reportPersonnel.map((person) => [normalizePersonnelName(person.name), person]),
       ),
-    [personnel],
+    [reportPersonnel],
   );
   const previewActiveRecords = useMemo(() => {
-    if (activeRecords === undefined) {
+    if (reportActiveRecords === undefined) {
       return undefined;
     }
 
     const overrideEntries = Object.values(previewOverrides);
 
     if (overrideEntries.length === 0) {
-      return activeRecords;
+      return reportActiveRecords;
     }
 
     const overriddenPersonnelNames = new Set(
       overrideEntries.map((override) => normalizePersonnelName(override.personnelName)),
     );
-    const filteredRecords = activeRecords.filter(
+    const filteredRecords = reportActiveRecords.filter(
       (record) => !overriddenPersonnelNames.has(normalizePersonnelName(record.name)),
     );
     const syntheticRecords: ParadeReportRecord[] = overrideEntries.flatMap(
@@ -255,7 +452,7 @@ export function ParadeReportBuilder({
     );
 
     return [...filteredRecords, ...syntheticRecords];
-  }, [activeRecords, personnelByName, previewOverrides, selectedDate]);
+  }, [personnelByName, previewOverrides, reportActiveRecords, selectedDate]);
   const previewOverrideEntries = useMemo(
     () =>
       Object.values(previewOverrides).sort((left, right) => {
@@ -286,7 +483,7 @@ export function ParadeReportBuilder({
       };
     }
 
-    if (personnelError && !personnel.length) {
+    if (personnelError && !reportPersonnel.length) {
       return {
         data: null,
         text: "",
@@ -295,9 +492,9 @@ export function ParadeReportBuilder({
     }
 
     if (
-      !personnel.length ||
+      !reportPersonnel.length ||
       previewActiveRecords === undefined ||
-      dutyAssignments === undefined
+      reportDutyAssignments === undefined
     ) {
       return {
         data: null,
@@ -308,9 +505,9 @@ export function ParadeReportBuilder({
 
     try {
       const data = buildParadeReportData({
-        personnel,
+        personnel: reportPersonnel,
         activeRecords: previewActiveRecords,
-        dutyAssignments,
+        dutyAssignments: reportDutyAssignments,
         paradeDate: selectedDate,
         asAtTime,
       });
@@ -329,10 +526,10 @@ export function ParadeReportBuilder({
     }
   }, [
     asAtTime,
-    dutyAssignments,
-    personnel,
     personnelError,
     previewActiveRecords,
+    reportDutyAssignments,
+    reportPersonnel,
     selectedDate,
     timeError,
   ]);
@@ -380,6 +577,10 @@ export function ParadeReportBuilder({
   }
 
   function handleRefresh() {
+    if (snapshotExists) {
+      return;
+    }
+
     setPersonnelRefreshKey((value) => value + 1);
   }
 
@@ -387,6 +588,45 @@ export function ParadeReportBuilder({
     setSelectedDate(value);
     setPreviewOverrides({});
     setOverridePersonnelKeys([]);
+  }
+
+  async function handleSaveSnapshot() {
+    if (timeError) {
+      toast.error(timeError);
+      return;
+    }
+
+    setIsSavingSnapshot(true);
+
+    try {
+      const [livePersonnel, liveActiveRecords, currentDutyAssignments] =
+        await Promise.all([
+          loadPersonnelFromRoute(),
+          convex.query(api.paradeState.listActiveRecordsForDate, {
+            date: selectedDate,
+          }) as Promise<ParadeStateRecordDoc[]>,
+          convex.query(api.duties.listAssignmentsForRange, {
+            fromDate: selectedDate,
+            toDate: selectedDate,
+          }) as Promise<DutyAssignmentDoc[]>,
+        ]);
+
+      await saveSnapshot({
+        date: selectedDate,
+        asAtTime,
+        personnel: toSnapshotPersonnel(livePersonnel),
+        activeRecords: toSnapshotActiveRecords(liveActiveRecords),
+        dutyAssignments: toSnapshotDutyAssignments(currentDutyAssignments),
+      });
+
+      toast.success(snapshotExists ? "Snapshot overwritten." : "Snapshot saved.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to save the parade snapshot.",
+      );
+    } finally {
+      setIsSavingSnapshot(false);
+    }
   }
 
   function handleOverrideStatusChange(value: PreviewOverrideStatus) {
@@ -472,7 +712,9 @@ export function ParadeReportBuilder({
 
   const warnings = reportState.data?.warnings ?? [];
   const nominalRollCount =
-    isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
+    snapshot === undefined || (isPersonnelLoading && !reportPersonnel.length)
+      ? "--"
+      : String(reportPersonnel.length);
   const selectedOverridePersonnelCount = overridePersonnelKeys.length;
   const previewOverrideCount = previewOverrideEntries.length;
   const shouldShowOverrideCustomStatus =
@@ -491,12 +733,24 @@ export function ParadeReportBuilder({
           <CardTitle>
             Parade State 
             <Badge variant="outline" className="ml-3">Nominal Roll {nominalRollCount}</Badge>
+            {snapshotExists ? (
+              <Badge variant="outline" className="ml-3 border-sky-200 bg-sky-50 text-sky-950">
+                Saved Snapshot
+              </Badge>
+            ) : null}
           </CardTitle>
           <CardDescription>
             A copy-ready parade-state message.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {snapshotExists ? (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+              Using the saved snapshot for {selectedDate}. Live status records, duties, and
+              personnel are bypassed until you overwrite this snapshot.
+            </div>
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
             <ReportDateField
               value={selectedDate}
@@ -524,7 +778,7 @@ export function ParadeReportBuilder({
                 type="button"
                 variant="outline"
                 onClick={handleRefresh}
-                disabled={isPersonnelLoading}
+                disabled={isPersonnelLoading || snapshotExists}
                 className="h-10 w-full md:flex-1"
               >
                 {isPersonnelLoading ? (
@@ -534,6 +788,31 @@ export function ParadeReportBuilder({
                 )}
                 Refresh
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleSaveSnapshot()}
+                disabled={isSavingSnapshot}
+                className="h-10 w-full md:flex-1"
+              >
+                {isSavingSnapshot ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                {snapshotExists ? "Overwrite" : "Save"}
+              </Button>
+              {snapshotExists ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setIsDeleteSnapshotOpen(true)}
+                  className="h-10 w-full md:flex-1"
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 onClick={() => void handleCopy("Parade report copied again.")}
@@ -571,6 +850,12 @@ export function ParadeReportBuilder({
           ) : null}
         </CardContent>
       </Card>
+
+      <DeleteSnapshotDialog
+        open={isDeleteSnapshotOpen}
+        onOpenChange={setIsDeleteSnapshotOpen}
+        snapshotDate={selectedDate}
+      />
 
       <Card className="border-emerald-950/10 bg-white/80 shadow-lg shadow-emerald-950/5 rounded-[30px]">
         <CardHeader className="border-b border-emerald-950/10">

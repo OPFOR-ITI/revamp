@@ -2,6 +2,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import type { Status } from "@/lib/constants";
 
 export type ParadeStateRecordDoc = Doc<"paradeStateRecords">;
+export type ParadeStateSnapshotDoc = Doc<"paradeStateSnapshots">;
 export type AppUserDoc = Doc<"appUsers">;
 export type ActiveStatusSummary = {
   status: Status;
