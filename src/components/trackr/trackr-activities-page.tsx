@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import {
+  ArrowUpRight,
   Clock3,
   Database,
   Loader2,
@@ -21,7 +22,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -33,10 +49,15 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDateLabel } from "@/lib/date";
-import { trackrActivitiesFetchResponseSchema } from "@/lib/trackr-schema";
+import {
+  trackrActivitiesFetchResponseSchema,
+  trackrCreateActivitiesResponseSchema,
+} from "@/lib/trackr-schema";
 
 const TRACKR_COOKIE_STORAGE_KEY = "revamp.trackr.cookie";
 const TRACKR_COOKIE_TTL_MS = 45 * 60 * 1000;
+const TRACKR_DEFAULT_CATEGORY_ID = 34;
+const TRACKR_DEFAULT_OPFOR_UNIT_NAME = "OPFOR";
 
 const trackrActivitiesRouteSchema = z.object({
   error: z
@@ -127,6 +148,9 @@ function subscribeToTrackrCookieStore(onStoreChange: () => void) {
 
 export function TrackrActivitiesPage() {
   const importTrackrConducts = useMutation(api.trackrConducts.importTrackrConducts);
+  const upsertTrackrConductFromCreate = useMutation(
+    api.trackrConducts.upsertTrackrConductFromCreate,
+  );
   const {
     results: loadedConducts,
     status: conductPaginationStatus,
@@ -137,6 +161,15 @@ export function TrackrActivitiesPage() {
     {},
     { initialNumItems: 10 },
   );
+  const {
+    results: sourceConducts,
+    status: sourceConductPaginationStatus,
+    loadMore: loadMoreSourceConducts,
+  } = usePaginatedQuery(
+    api.conducts.listConductsForTrackrCreate,
+    {},
+    { initialNumItems: 25 },
+  );
   const storedCookie = useSyncExternalStore(
     subscribeToTrackrCookieStore,
     readStoredTrackrCookie,
@@ -144,14 +177,22 @@ export function TrackrActivitiesPage() {
   );
   const [cookieInput, setCookieInput] = useState<string | null>(null);
   const [includePast, setIncludePast] = useState(true);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedConductId, setSelectedConductId] = useState<string>("");
   const [lastFetchedCount, setLastFetchedCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCreatingTrackrActivity, setIsCreatingTrackrActivity] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
   const conducts = loadedConducts;
   const cookie = cookieInput ?? storedCookie;
   const hasCookieValue = cookie.trim().length > 0;
+  const selectedConduct =
+    sourceConducts.find((conduct) => conduct._id === selectedConductId) ?? null;
+  const defaultConductingUnitId = conducts[0]?.conductingUnitId ?? "";
+  const defaultConductingUnitName =
+    conducts[0]?.conductingUnitName ?? TRACKR_DEFAULT_OPFOR_UNIT_NAME;
   const loadedPages = Math.max(1, Math.ceil(conducts.length / 10));
   const currentPage = Math.min(page, loadedPages);
   const paginatedConducts = conducts.slice((currentPage - 1) * 10, currentPage * 10);
@@ -159,6 +200,10 @@ export function TrackrActivitiesPage() {
   const isLoadingMoreConducts =
     conductPaginationStatus === "LoadingFirstPage" ||
     conductPaginationStatus === "LoadingMore";
+  const canLoadMoreSourceConducts = sourceConductPaginationStatus === "CanLoadMore";
+  const isLoadingMoreSourceConducts =
+    sourceConductPaginationStatus === "LoadingFirstPage" ||
+    sourceConductPaginationStatus === "LoadingMore";
 
   function handleStoreCookie() {
     if (!hasCookieValue) {
@@ -167,6 +212,14 @@ export function TrackrActivitiesPage() {
 
     persistTrackrCookie(cookie);
     toast.success("Trackr cookie stored for 45 minutes.");
+  }
+
+  function formatSourceConductLabel(conduct: {
+    name: string;
+    date: string;
+    numberOfPeriods: number;
+  }) {
+    return `${conduct.name} · ${formatDateLabel(conduct.date)} · ${conduct.numberOfPeriods}P`;
   }
 
   function handlePreviousPage() {
@@ -244,6 +297,91 @@ export function TrackrActivitiesPage() {
     }
   }
 
+  async function handleCreateTrackrActivity() {
+    if (!selectedConduct) {
+      toast.error("Select a source conduct first.");
+      return;
+    }
+
+    if (!cookie.trim()) {
+      toast.error("Enter your Trackr cookie first.");
+      return;
+    }
+
+    if (!defaultConductingUnitId.trim()) {
+      toast.error(
+        "No saved OPFOR Trackr unit id is available yet. Import OPFOR activities first.",
+      );
+      return;
+    }
+
+    setIsCreatingTrackrActivity(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/trackr/activities/create", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cookie,
+          payload: {
+            activities: [
+              {
+                name: selectedConduct.name,
+                periods: selectedConduct.numberOfPeriods,
+                date: `${selectedConduct.date}T10:00:00.000Z`,
+                conductingUnitId: defaultConductingUnitId.trim(),
+                description: null,
+                categoryId: TRACKR_DEFAULT_CATEGORY_ID,
+              },
+            ],
+          },
+        }),
+      });
+      const json = (await response.json()) as unknown;
+
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(json));
+      }
+
+      const parsed = trackrCreateActivitiesResponseSchema.safeParse(json);
+
+      if (!parsed.success) {
+        throw new Error("Trackr create-activity response shape was invalid.");
+      }
+
+      const createdActivityId = parsed.data.activityIds[0];
+
+      if (!createdActivityId) {
+        throw new Error("Trackr did not return an activity id.");
+      }
+
+      await upsertTrackrConductFromCreate({
+        name: selectedConduct.name,
+        trackrActivityId: createdActivityId,
+        date: selectedConduct.date,
+        conductingUnitName: defaultConductingUnitName,
+        conductingUnitId: defaultConductingUnitId.trim(),
+      });
+
+      setIsCreateDialogOpen(false);
+      toast.success(parsed.data.message);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to create the Trackr activity.";
+
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setIsCreatingTrackrActivity(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <section className="grid gap-4">
@@ -318,6 +456,18 @@ export function TrackrActivitiesPage() {
               </div>
 
               <div className="flex flex-col gap-3 lg:w-52">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => {
+                    setIsCreateDialogOpen(true);
+                  }}
+                  className="h-12 rounded-2xl border-emerald-950/10 bg-white/80"
+                >
+                  <ArrowUpRight className="size-4" />
+                  Create in Trackr
+                </Button>
+
                 <div className="rounded-2xl border border-emerald-950/10 bg-white/80 p-4 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -373,6 +523,103 @@ export function TrackrActivitiesPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Trackr Activity</DialogTitle>
+            <DialogDescription>
+              Pick one of your existing local conducts. The Trackr activity uses
+              its name, date, and period count. Category stays fixed at
+              `{TRACKR_DEFAULT_CATEGORY_ID}` and the OPFOR unit comes from your
+              saved OPFOR Trackr conducts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="trackr-source-conduct" className="text-sm font-semibold text-zinc-900">
+                Source conduct
+              </Label>
+              <Select
+                value={selectedConductId}
+                onValueChange={(value) => {
+                  setSelectedConductId(value ?? "");
+                }}
+              >
+                <SelectTrigger
+                  id="trackr-source-conduct"
+                  className="h-11 w-full rounded-2xl border-emerald-950/10 bg-white/80 px-3"
+                >
+                  {selectedConduct ? (
+                    <span className="line-clamp-1 text-left">
+                      {selectedConduct.name} · {formatDateLabel(selectedConduct.date)}
+                    </span>
+                  ) : (
+                    <SelectValue placeholder="Select a local conduct" />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceConducts.map((conduct) => (
+                    <SelectItem key={conduct._id} value={conduct._id}>
+                      {formatSourceConductLabel(conduct)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center gap-2">
+                {canLoadMoreSourceConducts ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      loadMoreSourceConducts(25);
+                    }}
+                    disabled={isLoadingMoreSourceConducts}
+                  >
+                    {isLoadingMoreSourceConducts ? "Loading..." : "Load more conducts"}
+                  </Button>
+                ) : null}
+                {selectedConduct ? (
+                  <p className="text-xs text-zinc-600">
+                    {selectedConduct.name} on {formatDateLabel(selectedConduct.date)} with{" "}
+                    {selectedConduct.numberOfPeriods} period
+                    {selectedConduct.numberOfPeriods === 1 ? "" : "s"}.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-950/10 bg-[#fbfaf4] p-4 text-sm text-zinc-700">
+              <p>
+                OPFOR unit: <span className="font-medium">{defaultConductingUnitName}</span>
+              </p>
+              {!defaultConductingUnitId ? (
+                <p className="mt-1 text-xs text-zinc-500">
+                  No saved OPFOR Trackr unit is available yet.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <DialogFooter showCloseButton>
+            <Button
+              onClick={() => {
+                void handleCreateTrackrActivity();
+              }}
+              disabled={isCreatingTrackrActivity}
+              className="min-w-32"
+            >
+              {isCreatingTrackrActivity ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowUpRight className="size-4" />
+              )}
+              Create in Trackr
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card className="border-emerald-950/10 bg-white/75 shadow-[0_22px_60px_-48px_rgba(44,74,36,0.75)] backdrop-blur">
         <CardHeader className="gap-3 border-b border-emerald-950/8 pb-5">

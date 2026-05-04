@@ -2,7 +2,10 @@ import "server-only";
 
 import {
   trackrActivitiesResponseSchema,
+  trackrCreateActivitiesPayloadSchema,
+  trackrCreateActivitiesResponseSchema,
   trackrAttendanceUnitsPayloadSchema,
+  type TrackrCreateActivitiesPayload,
   type TrackrAttendanceUnitsPayload,
 } from "@/lib/trackr-schema";
 
@@ -157,6 +160,19 @@ export class TrackrClient {
       body: parsedPayload,
       signal,
     });
+  }
+
+  async createActivities(
+    payload: TrackrCreateActivitiesPayload,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const parsedPayload = trackrCreateActivitiesPayloadSchema.parse(payload);
+    const response = await this.request("POST", "/api/v1/activities", {
+      body: parsedPayload,
+      signal,
+    });
+
+    return trackrCreateActivitiesResponseSchema.parse(response);
   }
 
   async getJson<TResponse>(

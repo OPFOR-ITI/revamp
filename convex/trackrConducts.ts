@@ -145,3 +145,70 @@ export const listTrackrConducts = query({
       .paginate(args.paginationOpts);
   },
 });
+
+export const upsertTrackrConductFromCreate = mutation({
+  args: {
+    name: v.string(),
+    trackrActivityId: v.string(),
+    date: v.string(),
+    conductingUnitName: v.string(),
+    conductingUnitId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "conducts.manage",
+    });
+
+    const name = normalizeText(args.name);
+    const trackrActivityId = normalizeText(args.trackrActivityId);
+    const conductingUnitName = normalizeText(args.conductingUnitName);
+    const conductingUnitId = normalizeText(args.conductingUnitId);
+    const date = normalizeTrackrDate(args.date);
+
+    if (!name || !trackrActivityId || !conductingUnitName || !conductingUnitId) {
+      throw new ConvexError("Trackr conduct details were incomplete.");
+    }
+
+    const conductDay = dateStringToDayIndex(date);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("trackrConducts")
+      .withIndex("by_trackrActivityId", (q) =>
+        q.eq("trackrActivityId", trackrActivityId),
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name,
+        date,
+        conductDay,
+        conductingUnitName,
+        conductingUnitId,
+        updatedAt: now,
+      });
+
+      return {
+        trackrConductId: existing._id,
+        created: false,
+      };
+    }
+
+    const trackrConductId = await ctx.db.insert("trackrConducts", {
+      name,
+      trackrActivityId,
+      date,
+      conductDay,
+      conductingUnitName,
+      conductingUnitId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      trackrConductId,
+      created: true,
+    };
+  },
+});

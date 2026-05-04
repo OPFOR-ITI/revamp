@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 
 import {
   CONDUCT_ELIGIBLE_PLATOON_ORDER,
@@ -562,5 +563,23 @@ export const getConductWhatsappMessage = query({
     return {
       message: formatConductWhatsappMessage(data),
     };
+  },
+});
+
+export const listConductsForTrackrCreate = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "conducts.manage",
+    });
+
+    return await ctx.db
+      .query("conducts")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
