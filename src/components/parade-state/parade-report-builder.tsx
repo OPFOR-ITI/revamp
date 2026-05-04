@@ -15,7 +15,8 @@ import { z } from "zod";
 
 import { api } from "../../../convex/_generated/api";
 import type { DutyAssignmentDoc } from "@/components/duties/types";
-import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
+import { BulkSelectionList } from "@/components/parade-state/bulk-selection-list";
+import { PersonnelMultiCombobox } from "@/components/parade-state/personnel-multi-combobox";
 import { StatusBadge } from "@/components/parade-state/status-badge";
 import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
 import { Badge } from "@/components/ui/badge";
@@ -64,11 +65,15 @@ type PersonnelRouteError = { error?: { code?: string; message?: string } };
 const IN_CAMP_OVERRIDE_VALUE = "__IN_CAMP__" as const;
 type PreviewOverrideStatus = Status | typeof IN_CAMP_OVERRIDE_VALUE;
 type PreviewOverrideRecord = {
-  personnelKey: string;
+  personnelName: string;
   status: PreviewOverrideStatus;
   customStatus?: string;
   affectParadeState: boolean;
 };
+
+function normalizePersonnelName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
 
 function ReportDateField({
   value,
@@ -104,7 +109,7 @@ export function ParadeReportBuilder({
   const [isPersonnelLoading, setIsPersonnelLoading] = useState(true);
   const [isCopying, setIsCopying] = useState(false);
   const [isPreviewEditorOpen, setIsPreviewEditorOpen] = useState(false);
-  const [overridePersonnelKey, setOverridePersonnelKey] = useState("");
+  const [overridePersonnelKeys, setOverridePersonnelKeys] = useState<string[]>([]);
   const [overrideStatus, setOverrideStatus] =
     useState<PreviewOverrideStatus>(IN_CAMP_OVERRIDE_VALUE);
   const [overrideCustomStatus, setOverrideCustomStatus] = useState("");
@@ -190,6 +195,13 @@ export function ParadeReportBuilder({
     () => new Map(personnel.map((person) => [person.personnelKey, person])),
     [personnel],
   );
+  const personnelByName = useMemo(
+    () =>
+      new Map(
+        personnel.map((person) => [normalizePersonnelName(person.name), person]),
+      ),
+    [personnel],
+  );
   const previewActiveRecords = useMemo(() => {
     if (activeRecords === undefined) {
       return undefined;
@@ -201,11 +213,11 @@ export function ParadeReportBuilder({
       return activeRecords;
     }
 
-    const overriddenPersonnelKeys = new Set(
-      overrideEntries.map((override) => override.personnelKey),
+    const overriddenPersonnelNames = new Set(
+      overrideEntries.map((override) => normalizePersonnelName(override.personnelName)),
     );
     const filteredRecords = activeRecords.filter(
-      (record) => !overriddenPersonnelKeys.has(record.personnelKey),
+      (record) => !overriddenPersonnelNames.has(normalizePersonnelName(record.name)),
     );
     const syntheticRecords: ParadeReportRecord[] = overrideEntries.flatMap(
       (override, index) => {
@@ -213,7 +225,9 @@ export function ParadeReportBuilder({
           return [];
         }
 
-        const person = personnelByKey.get(override.personnelKey);
+        const person = personnelByName.get(
+          normalizePersonnelName(override.personnelName),
+        );
 
         if (!person) {
           return [];
@@ -241,15 +255,19 @@ export function ParadeReportBuilder({
     );
 
     return [...filteredRecords, ...syntheticRecords];
-  }, [activeRecords, personnelByKey, previewOverrides, selectedDate]);
+  }, [activeRecords, personnelByName, previewOverrides, selectedDate]);
   const previewOverrideEntries = useMemo(
     () =>
       Object.values(previewOverrides).sort((left, right) => {
-        const leftPerson = personnelByKey.get(left.personnelKey);
-        const rightPerson = personnelByKey.get(right.personnelKey);
+        const leftPerson = personnelByName.get(
+          normalizePersonnelName(left.personnelName),
+        );
+        const rightPerson = personnelByName.get(
+          normalizePersonnelName(right.personnelName),
+        );
 
         if (!leftPerson || !rightPerson) {
-          return left.personnelKey.localeCompare(right.personnelKey);
+          return left.personnelName.localeCompare(right.personnelName);
         }
 
         return (
@@ -257,7 +275,7 @@ export function ParadeReportBuilder({
           leftPerson.name.localeCompare(rightPerson.name)
         );
       }),
-    [personnelByKey, previewOverrides],
+    [personnelByName, previewOverrides],
   );
   const reportState = useMemo(() => {
     if (timeError) {
@@ -368,7 +386,7 @@ export function ParadeReportBuilder({
   function handleSelectedDateChange(value: string) {
     setSelectedDate(value);
     setPreviewOverrides({});
-    setOverridePersonnelKey("");
+    setOverridePersonnelKeys([]);
   }
 
   function handleOverrideStatusChange(value: PreviewOverrideStatus) {
@@ -390,8 +408,8 @@ export function ParadeReportBuilder({
   }
 
   function handleApplyPreviewOverride() {
-    if (!overridePersonnelKey) {
-      toast.error("Select a serviceman to edit in the preview.");
+    if (overridePersonnelKeys.length === 0) {
+      toast.error("Select at least one serviceman to edit in the preview.");
       return;
     }
 
@@ -411,25 +429,39 @@ export function ParadeReportBuilder({
           ? overrideAffectParadeState
           : doesStatusAffectParadeState(overrideStatus);
 
-    setPreviewOverrides((current) => ({
-      ...current,
-      [overridePersonnelKey]: {
-        personnelKey: overridePersonnelKey,
-        status: overrideStatus,
-        customStatus:
-          overrideStatus !== IN_CAMP_OVERRIDE_VALUE && isOtherStatus(overrideStatus)
-            ? overrideCustomStatus.trim()
-            : undefined,
-        affectParadeState: resolvedAffectParadeState,
-      },
-    }));
-    setOverridePersonnelKey("");
-  }
+    const selectedPersonnel = overridePersonnelKeys
+      .map((personnelKey) => personnelByKey.get(personnelKey))
+      .filter((person): person is PersonnelRecord => person !== undefined);
 
-  function handleRemovePreviewOverride(personnelKey: string) {
+    if (selectedPersonnel.length === 0) {
+      toast.error("Selected personnel could not be resolved. Refresh and try again.");
+      return;
+    }
+
     setPreviewOverrides((current) => {
       const next = { ...current };
-      delete next[personnelKey];
+
+      for (const person of selectedPersonnel) {
+        next[normalizePersonnelName(person.name)] = {
+          personnelName: person.name,
+          status: overrideStatus,
+          customStatus:
+            overrideStatus !== IN_CAMP_OVERRIDE_VALUE && isOtherStatus(overrideStatus)
+              ? overrideCustomStatus.trim()
+              : undefined,
+          affectParadeState: resolvedAffectParadeState,
+        };
+      }
+
+      return next;
+    });
+    setOverridePersonnelKeys([]);
+  }
+
+  function handleRemovePreviewOverride(personnelName: string) {
+    setPreviewOverrides((current) => {
+      const next = { ...current };
+      delete next[normalizePersonnelName(personnelName)];
       return next;
     });
   }
@@ -441,9 +473,7 @@ export function ParadeReportBuilder({
   const warnings = reportState.data?.warnings ?? [];
   const nominalRollCount =
     isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
-  const selectedOverridePerson = overridePersonnelKey
-    ? personnelByKey.get(overridePersonnelKey)
-    : undefined;
+  const selectedOverridePersonnelCount = overridePersonnelKeys.length;
   const previewOverrideCount = previewOverrideEntries.length;
   const shouldShowOverrideCustomStatus =
     overrideStatus !== IN_CAMP_OVERRIDE_VALUE && isOtherStatus(overrideStatus);
@@ -451,7 +481,7 @@ export function ParadeReportBuilder({
     overrideStatus !== IN_CAMP_OVERRIDE_VALUE &&
     shouldShowOutOfCampToggle(overrideStatus);
   const canApplyPreviewOverride =
-    !!overridePersonnelKey &&
+    overridePersonnelKeys.length > 0 &&
     (!shouldShowOverrideCustomStatus || !!overrideCustomStatus.trim());
 
   return (
@@ -602,11 +632,11 @@ export function ParadeReportBuilder({
 
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1.3fr)_220px_auto]">
                   <FormItem>
-                    <FormLabel>Serviceman</FormLabel>
-                    <PersonnelCombobox
+                    <FormLabel>Servicemen</FormLabel>
+                    <PersonnelMultiCombobox
                       personnel={personnel}
-                      value={overridePersonnelKey}
-                      onChange={setOverridePersonnelKey}
+                      value={overridePersonnelKeys}
+                      onChange={setOverridePersonnelKeys}
                       disabled={isPersonnelLoading || personnel.length === 0}
                     />
                   </FormItem>
@@ -681,17 +711,32 @@ export function ParadeReportBuilder({
                   </div>
                 ) : null}
 
-                {selectedOverridePerson ? (
+                {selectedOverridePersonnelCount > 0 ? (
                   <p className="text-xs text-zinc-500">
-                    Editing {selectedOverridePerson.rank} {selectedOverridePerson.name} for
-                    the current preview only.
+                    Editing {selectedOverridePersonnelCount}{" "}
+                    {selectedOverridePersonnelCount === 1
+                      ? "serviceman"
+                      : "servicemen"}{" "}
+                    for the current preview only. Matching is based on name.
                   </p>
                 ) : null}
+
+                <BulkSelectionList
+                  personnel={personnel}
+                  selectedKeys={overridePersonnelKeys}
+                  onRemove={(personnelKey) => {
+                    setOverridePersonnelKeys((current) =>
+                      current.filter((key) => key !== personnelKey),
+                    );
+                  }}
+                />
 
                 {previewOverrideCount > 0 ? (
                   <div className="space-y-2">
                     {previewOverrideEntries.map((override) => {
-                      const person = personnelByKey.get(override.personnelKey);
+                      const person = personnelByName.get(
+                        normalizePersonnelName(override.personnelName),
+                      );
 
                       if (!person) {
                         return null;
@@ -699,7 +744,7 @@ export function ParadeReportBuilder({
 
                       return (
                         <div
-                          key={override.personnelKey}
+                          key={normalizePersonnelName(override.personnelName)}
                           className="flex flex-col gap-3 rounded-xl border border-emerald-950/10 bg-white px-3 py-3 md:flex-row md:items-center md:justify-between"
                         >
                           <div className="min-w-0">
@@ -738,9 +783,7 @@ export function ParadeReportBuilder({
                               type="button"
                               variant="ghost"
                               size="icon"
-                              onClick={() =>
-                                handleRemovePreviewOverride(override.personnelKey)
-                              }
+                              onClick={() => handleRemovePreviewOverride(override.personnelName)}
                               className="size-8 text-zinc-500"
                               aria-label={`Remove temporary override for ${person.rank} ${person.name}`}
                             >
