@@ -63,6 +63,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Form,
   FormControl,
   FormDescription,
@@ -1617,7 +1624,8 @@ export function OperationsDashboard({
     useState<ParadeStateRecordDoc | null>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
-  const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<Status[]>([]);
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [platoonFilter, setPlatoonFilter] = useState("all");
   const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
   const [recordFilterFromDate, setRecordFilterFromDate] = useState(
@@ -1710,6 +1718,13 @@ export function OperationsDashboard({
   const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
     (left, right) => left.localeCompare(right),
   );
+  const hasStatusFilter = statusFilter.length > 0;
+  const statusFilterLabel =
+    statusFilter.length === 0
+      ? "All statuses"
+      : statusFilter.length === 1
+        ? formatStatusLabel(statusFilter[0])
+        : `${statusFilter.length} statuses`;
 
   function handleRecordDeleted(record: ParadeStateRecordDoc) {
     if (selectedRecord?._id === record._id) {
@@ -1721,9 +1736,16 @@ export function OperationsDashboard({
     }
   }
 
+  function toggleStatusFilter(status: Status) {
+    setStatusFilter((current) =>
+      current.includes(status)
+        ? current.filter((value) => value !== status)
+        : [...current, status],
+    );
+  }
+
   const filteredRecords = records.filter((record) => {
-    const matchesStatus =
-      statusFilter === "all" ? true : record.status === statusFilter;
+    const matchesStatus = !hasStatusFilter || statusFilter.includes(record.status);
     const matchesPlatoon =
       platoonFilter === "all" ? true : record.platoon === platoonFilter;
     const matchesImpact =
@@ -1757,13 +1779,13 @@ export function OperationsDashboard({
     recordFilterFromDate !== todayDate || recordFilterToDate !== "";
   const hasActiveRecordFilters =
     hasRecordSearch ||
-    statusFilter !== "all" ||
+    hasStatusFilter ||
     platoonFilter !== "all" ||
     impactFilter !== "all" ||
     hasCustomDateRange;
   const activeRecordFilterCount = [
     hasRecordSearch,
-    statusFilter !== "all",
+    hasStatusFilter,
     platoonFilter !== "all",
     impactFilter !== "all",
     hasCustomDateRange,
@@ -1782,7 +1804,7 @@ export function OperationsDashboard({
 
   function clearRecordFilters() {
     setSearch("");
-    setStatusFilter("all");
+    setStatusFilter([]);
     setPlatoonFilter("all");
     setImpactFilter("all");
     setRecordFilterFromDate(todayDate);
@@ -2131,7 +2153,7 @@ export function OperationsDashboard({
                     </div>
 
                     <div className="mt-2 flex flex-wrap items-center gap-2 xl:flex-nowrap">
-                      <div className="relative min-w-0 flex-1 xl:max-w-sm">
+                      <div className="relative min-w-[10rem] flex-1 xl:w-full">
                         <Label htmlFor="record-search" className="sr-only">
                           Search records
                         </Label>
@@ -2145,26 +2167,63 @@ export function OperationsDashboard({
                         />
                       </div>
 
-                      <div className="min-w-[9rem]">
+                      <div className="min-w-[10rem]">
                           <Label className="sr-only">Status</Label>
-                          <Select
-                            value={statusFilter}
-                            onValueChange={(value) =>
-                              setStatusFilter((value ?? "all") as Status | "all")
-                            }
+                          <Popover
+                            open={isStatusFilterOpen}
+                            onOpenChange={setIsStatusFilterOpen}
                           >
-                            <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
-                              <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All statuses</SelectItem>
-                              {STATUS_VALUES.map((status) => (
-                                <SelectItem key={status} value={status}>
-                                  {formatStatusLabel(status)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <PopoverTrigger
+                              className={`${buttonVariants({ variant: "outline" })} h-8 w-full justify-between rounded-md border-emerald-950/10 bg-white px-3 text-left text-sm font-normal shadow-none hover:bg-white`}
+                            >
+                              <span
+                                className={`truncate ${hasStatusFilter ? "text-zinc-900" : "text-muted-foreground"}`}
+                              >
+                                {statusFilterLabel}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {hasStatusFilter ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="h-5 rounded-md px-1.5 text-xs font-medium"
+                                  >
+                                    {statusFilter.length}
+                                  </Badge>
+                                ) : null}
+                                <ChevronsUpDown className="size-4 opacity-50" />
+                              </div>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="start"
+                              className="w-[min(18rem,calc(100vw-2rem))] p-0"
+                            >
+                              <Command>
+                                <CommandInput placeholder="Search statuses..." />
+                                <CommandList>
+                                  <CommandEmpty>No matching statuses found.</CommandEmpty>
+                                  {STATUS_VALUES.map((status) => {
+                                    const isSelected = statusFilter.includes(status);
+
+                                    return (
+                                      <CommandItem
+                                        key={status}
+                                        value={formatStatusLabel(status)}
+                                        data-checked={isSelected}
+                                        onSelect={() => toggleStatusFilter(status)}
+                                      >
+                                        {formatStatusLabel(status)}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                  {hasStatusFilter ? (
+                                    <CommandItem onSelect={() => setStatusFilter([])}>
+                                      Clear status filter
+                                    </CommandItem>
+                                  ) : null}
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                       </div>
 
                       <div className="min-w-[8rem]">
