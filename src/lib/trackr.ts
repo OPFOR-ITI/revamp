@@ -102,6 +102,39 @@ async function parseTrackrResponse(response: Response) {
   }
 }
 
+function isHtmlResponse(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.includes("text/html");
+}
+
+function isLikelyHtmlDocument(value: unknown) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+
+  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
+}
+
+function getTrackrFailureMessage(response: Response, parsedResponse: unknown) {
+  if (response.status === 401) {
+    return "Trackr authentication failed. Refresh your Trackr session cookie and try again.";
+  }
+
+  if (
+    response.status === 403 &&
+    (isHtmlResponse(response) || isLikelyHtmlDocument(parsedResponse))
+  ) {
+    return "Trackr rejected this server request before it reached the API. In deployment this usually means the hosting IP or region is blocked, so run this route from a Singapore-based server or locally.";
+  }
+
+  return (
+    extractTrackrErrorMessage(parsedResponse) ??
+    `Trackr request failed with status ${response.status}.`
+  );
+}
+
 export class TrackrClient {
   private readonly baseUrl: string;
   private readonly cookie: string;
@@ -229,9 +262,7 @@ export class TrackrClient {
     const parsedResponse = await parseTrackrResponse(response);
 
     if (!response.ok) {
-      const message =
-        extractTrackrErrorMessage(parsedResponse) ??
-        `Trackr request failed with status ${response.status}.`;
+      const message = getTrackrFailureMessage(response, parsedResponse);
 
       throw new TrackrError("TRACKR_REQUEST_FAILED", message, {
         status: response.status,

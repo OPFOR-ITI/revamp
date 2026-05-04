@@ -10,6 +10,8 @@ import {
   TrackrError,
 } from "@/lib/trackr";
 
+export const runtime = "nodejs";
+
 const trackrActivitiesRequestSchema = z.object({
   cookie: z
     .string()

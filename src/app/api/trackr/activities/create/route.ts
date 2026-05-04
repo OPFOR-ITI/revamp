@@ -7,6 +7,8 @@ import {
 } from "@/lib/trackr-schema";
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
 
+export const runtime = "nodejs";
+
 const trackrCreateActivitiesRequestSchema = z.object({
   cookie: z.string().trim().min(1, "Enter your Trackr browser cookie."),
   payload: trackrCreateActivitiesPayloadSchema,
