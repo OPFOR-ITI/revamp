@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import type {
 } from "@/components/conducts/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -106,6 +107,30 @@ function getPlatoonOptions(personnel: ConductNominalRollSeed[]) {
   return Array.from(new Set(personnel.map((person) => person.platoon)));
 }
 
+function getAttendanceStatusTone(reason: ConductAttendanceReason) {
+  if (reason === "Present") {
+    return {
+      rowClassName: "",
+      badgeClassName: "border-emerald-950/10 bg-white/75 text-zinc-600",
+    };
+  }
+
+  return {
+    rowClassName:
+      "border-rose-300 bg-linear-to-r from-rose-100 via-orange-50 to-white shadow-md shadow-rose-950/10",
+    badgeClassName:
+      "border-rose-600 bg-rose-600 text-white shadow-sm shadow-rose-950/20",
+  };
+}
+
+function shouldIgnoreSelectionToggle(
+  target: EventTarget | null,
+) {
+  return target instanceof HTMLElement
+    ? target.closest("[data-no-select-toggle='true']") !== null
+    : false;
+}
+
 export function ConductAttendanceDialog({
   open,
   onOpenChange,
@@ -132,8 +157,11 @@ export function ConductAttendanceDialog({
   const [draftByKey, setDraftByKey] = useState<Record<string, DraftAttendanceEntry>>(
     {},
   );
+  const [selectedPersonnelKeys, setSelectedPersonnelKeys] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState("");
   const [platoonFilter, setPlatoonFilter] = useState(ALL_PLATOONS_VALUE);
+  const [bulkReason, setBulkReason] = useState<ConductAttendanceReason>("Present");
+  const [bulkRemarks, setBulkRemarks] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoMarking, setIsAutoMarking] = useState(false);
   const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
@@ -142,13 +170,19 @@ export function ConductAttendanceDialog({
   useEffect(() => {
     if (!open) {
       setDraftByKey({});
+      setSelectedPersonnelKeys([]);
       setSearchValue("");
       setPlatoonFilter(ALL_PLATOONS_VALUE);
+      setBulkReason("Present");
+      setBulkRemarks("");
       setHasAttemptedSave(false);
       return;
     }
 
     setDraftByKey(buildDraftState(attendanceState));
+    setSelectedPersonnelKeys([]);
+    setBulkReason("Present");
+    setBulkRemarks("");
   }, [attendanceState, open]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -184,6 +218,9 @@ export function ConductAttendanceDialog({
       .filter(Boolean)
       .every((token) => haystack.includes(token));
   });
+  const filteredPersonnelKeys = filteredPersonnel.map((person) => person.personnelKey);
+  const filteredPersonnelKeySet = new Set(filteredPersonnelKeys);
+  const selectedPersonnelKeySet = new Set(selectedPersonnelKeys);
   const nonPresentEntries = Object.entries(draftByKey);
   const invalidOtherKeys = nonPresentEntries
     .filter(([, entry]) => entry.reason === "Other" && !entry.remarks.trim())
@@ -202,6 +239,21 @@ export function ConductAttendanceDialog({
     nonPresentCount: nonPresentEntries.length,
     presentCount: Math.max(basePersonnel.length - nonPresentEntries.length, 0),
   };
+  const filteredNonPresentCount = filteredPersonnelKeys.filter((personnelKey) =>
+    Object.hasOwn(draftByKey, personnelKey),
+  ).length;
+  const filteredSelectedCount = selectedPersonnelKeys.filter((personnelKey) =>
+    filteredPersonnelKeySet.has(personnelKey),
+  ).length;
+  const filteredPresentCount = Math.max(
+    filteredPersonnel.length - filteredNonPresentCount,
+    0,
+  );
+  const allFilteredSelected =
+    filteredPersonnel.length > 0 &&
+    filteredSelectedCount === filteredPersonnel.length;
+  const someFilteredSelected =
+    filteredSelectedCount > 0 && filteredSelectedCount < filteredPersonnel.length;
   const isLocked =
     attendanceState?.snapshotStatus === "futureLocked" ||
     attendanceState?.snapshotStatus === "pastLocked";
@@ -217,6 +269,12 @@ export function ConductAttendanceDialog({
     !isSaving &&
     invalidOtherKeys.length === 0 &&
     (attendanceState.snapshotRows.length > 0 || !livePersonnelError);
+  const bulkRequiresRemarks = bulkReason === "Other" && !bulkRemarks.trim();
+  const canApplyBulk =
+    selectedPersonnelKeys.length > 0 &&
+    !bulkRequiresRemarks &&
+    !isSaving &&
+    !isAutoMarking;
 
   function setReason(personnelKey: string, reason: ConductAttendanceReason) {
     setDraftByKey((current) => {
@@ -256,6 +314,100 @@ export function ConductAttendanceDialog({
     });
   }
 
+  function toggleSelectedPersonnel(personnelKey: string) {
+    setSelectedPersonnelKeys((current) =>
+      current.includes(personnelKey)
+        ? current.filter((key) => key !== personnelKey)
+        : [...current, personnelKey],
+    );
+  }
+
+  function handlePersonnelCardClick(
+    event: MouseEvent<HTMLDivElement>,
+    personnelKey: string,
+  ) {
+    if (shouldIgnoreSelectionToggle(event.target)) {
+      return;
+    }
+
+    toggleSelectedPersonnel(personnelKey);
+  }
+
+  function handlePersonnelCardKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+    personnelKey: string,
+  ) {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    toggleSelectedPersonnel(personnelKey);
+  }
+
+  function selectAllFilteredPersonnel() {
+    if (filteredPersonnelKeys.length === 0) {
+      return;
+    }
+
+    setSelectedPersonnelKeys((current) => [
+      ...new Set([...current, ...filteredPersonnelKeys]),
+    ]);
+  }
+
+  function unselectFilteredPersonnel() {
+    if (filteredPersonnelKeys.length === 0) {
+      return;
+    }
+
+    setSelectedPersonnelKeys((current) =>
+      current.filter((key) => !filteredPersonnelKeySet.has(key)),
+    );
+  }
+
+  function clearSelectedPersonnel() {
+    setSelectedPersonnelKeys([]);
+  }
+
+  function applyBulkUpdate() {
+    if (selectedPersonnelKeys.length === 0) {
+      return;
+    }
+
+    if (bulkRequiresRemarks) {
+      toast.error('Add remarks before applying a bulk "Other" status.');
+      return;
+    }
+
+    setDraftByKey((current) => {
+      const next = { ...current };
+
+      for (const personnelKey of selectedPersonnelKeys) {
+        if (bulkReason === "Present") {
+          delete next[personnelKey];
+          continue;
+        }
+
+        next[personnelKey] = {
+          reason: bulkReason as ConductAttendancePersistedReason,
+          remarks: bulkRemarks.trim(),
+        };
+      }
+
+      return next;
+    });
+
+    toast.success(
+      bulkReason === "Present"
+        ? `Cleared attendance overrides for ${selectedPersonnelKeys.length} selected personnel.`
+        : `Applied ${bulkReason} to ${selectedPersonnelKeys.length} selected personnel.`,
+    );
+  }
+
   async function handleAutoMark() {
     if (!conduct || !attendanceState) {
       return;
@@ -270,19 +422,24 @@ export function ConductAttendanceDialog({
           attendanceState.snapshotRows.length > 0 ? undefined : livePersonnelSeed,
       });
 
-      setDraftByKey(
-        Object.fromEntries(
-          response.attendanceEntries.map((entry) => [
-            entry.personnelKey,
-            {
-              reason: entry.reason,
-              remarks: entry.remarks ?? "",
-            },
-          ]),
-        ),
-      );
+      setDraftByKey((current) => {
+        const next = { ...current };
+
+        for (const entry of response.attendanceEntries) {
+          if (Object.hasOwn(next, entry.personnelKey)) {
+            continue;
+          }
+
+          next[entry.personnelKey] = {
+            reason: entry.reason,
+            remarks: entry.remarks ?? "",
+          };
+        }
+
+        return next;
+      });
       setHasAttemptedSave(false);
-      toast.success("Attendance draft replaced from parade state.");
+      toast.success("Auto-mark applied to currently present personnel only.");
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -351,35 +508,35 @@ export function ConductAttendanceDialog({
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="grid gap-3 md:grid-cols-[1.1fr_1.1fr_1fr_auto]">
-              <div className="rounded-[24px] border border-emerald-950/10 bg-white/80 px-4 py-4">
+            <div className="grid gap-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
+              <div className="rounded-[24px] border border-emerald-950/10 bg-white/80 px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
                   Posted
                 </p>
-                <p className="mt-1 text-2xl font-semibold text-zinc-950">
+                <p className="mt-1 text-xl font-semibold text-zinc-950">
                   {counts.nominalRollCount.toString().padStart(2, "0")}
                 </p>
               </div>
-              <div className="rounded-[24px] border border-emerald-950/10 bg-emerald-50 px-4 py-4">
+              <div className="rounded-[24px] border border-emerald-950/10 bg-emerald-50 px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                  Present
+                  Participating
                 </p>
-                <p className="mt-1 text-2xl font-semibold text-emerald-900">
+                <p className="mt-1 text-xl font-semibold text-emerald-900">
                   {counts.presentCount.toString().padStart(2, "0")}
                 </p>
               </div>
-              <div className="rounded-[24px] border border-rose-950/10 bg-rose-50 px-4 py-4">
+              <div className="rounded-[24px] border border-rose-950/10 bg-rose-50 px-4 py-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-rose-900/55">
-                  Non-Present
+                  Non-Participants
                 </p>
-                <p className="mt-1 text-2xl font-semibold text-rose-900">
+                <p className="mt-1 text-xl font-semibold text-rose-900">
                   {counts.nonPresentCount.toString().padStart(2, "0")}
                 </p>
               </div>
               <Button
                 type="button"
                 variant="outline"
-                className="h-full min-h-24 rounded-[24px] border-emerald-950/10 bg-white/80 text-left"
+                className="h-full min-h-0 rounded-[24px] border-emerald-950/10 bg-white/80 px-4 py-3 text-left"
                 onClick={() => void handleAutoMark()}
                 disabled={
                   isLocked ||
@@ -419,43 +576,154 @@ export function ConductAttendanceDialog({
 
             {!isLocked ? (
               <>
-                <div className="grid gap-3 rounded-[28px] border border-emerald-950/10 bg-[#fbfaf4] p-4 md:grid-cols-[1fr_220px]">
-                  <div className="space-y-2">
-                    <Label htmlFor="conduct-attendance-search">Search personnel</Label>
-                    <Input
-                      id="conduct-attendance-search"
-                      value={searchValue}
-                      onChange={(event) => setSearchValue(event.target.value)}
-                      placeholder="Search rank, name, or platoon..."
-                      className="rounded-2xl border-emerald-950/10 bg-white/85"
-                    />
+                <div className="space-y-4 rounded-[28px] border border-emerald-950/10 bg-[#fbfaf4] p-4">
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="space-y-2">
+                      <Label htmlFor="conduct-attendance-search">Search personnel</Label>
+                      <Input
+                        id="conduct-attendance-search"
+                        value={searchValue}
+                        onChange={(event) => setSearchValue(event.target.value)}
+                        placeholder="Search rank, name, or platoon..."
+                        className="rounded-2xl border-emerald-950/10 bg-white/85"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="conduct-attendance-platoon">Platoon filter</Label>
+                      <Select
+                        value={platoonFilter}
+                        onValueChange={(value) =>
+                          setPlatoonFilter(value ?? ALL_PLATOONS_VALUE)
+                        }
+                      >
+                        <SelectTrigger
+                          id="conduct-attendance-platoon"
+                          className="rounded-2xl border-emerald-950/10 bg-white/85"
+                        >
+                          <SelectValue placeholder="All platoons" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_PLATOONS_VALUE}>
+                            All platoons
+                          </SelectItem>
+                          {getPlatoonOptions(basePersonnel).map((platoon) => (
+                            <SelectItem key={platoon} value={platoon}>
+                              {platoon}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="conduct-attendance-platoon">Platoon filter</Label>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-950/10 bg-white/85 text-zinc-700"
+                    >
+                      Filtered: {filteredPersonnel.length}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-950/10 bg-emerald-50 text-emerald-900"
+                    >
+                      Participating: {filteredPresentCount}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-rose-950/10 bg-rose-50 text-rose-900"
+                    >
+                      Non-Participants: {filteredNonPresentCount}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-950/10 bg-white/85 text-zinc-700"
+                    >
+                      Selected: {selectedPersonnelKeys.length}
+                    </Badge>
+                    {filteredSelectedCount !== selectedPersonnelKeys.length ? (
+                      <span>{filteredSelectedCount} selected in current filter</span>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_auto_180px_minmax(0,1fr)_auto]">
+                    <label className="flex min-h-7 items-center gap-2 rounded-xl border border-emerald-950/10 bg-white/85 px-3 py-2 text-sm text-zinc-700">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        indeterminate={someFilteredSelected}
+                        disabled={filteredPersonnel.length === 0}
+                        aria-label="Select all filtered personnel"
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            selectAllFilteredPersonnel();
+                            return;
+                          }
+
+                          unselectFilteredPersonnel();
+                        }}
+                      />
+                      <span>
+                        {allFilteredSelected || someFilteredSelected
+                          ? "Deselect filtered"
+                          : "Select filtered"}
+                      </span>
+                    </label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-emerald-950/10 bg-white/85"
+                      onClick={clearSelectedPersonnel}
+                      disabled={selectedPersonnelKeys.length === 0}
+                    >
+                      Clear selection
+                    </Button>
                     <Select
-                      value={platoonFilter}
+                      value={bulkReason}
                       onValueChange={(value) =>
-                        setPlatoonFilter(value ?? ALL_PLATOONS_VALUE)
+                        setBulkReason(value as ConductAttendanceReason)
                       }
                     >
                       <SelectTrigger
-                        id="conduct-attendance-platoon"
-                        className="rounded-2xl border-emerald-950/10 bg-white/85"
+                        size="sm"
+                        className="w-full rounded-xl border-emerald-950/10 bg-white/85"
                       >
-                        <SelectValue placeholder="All platoons" />
+                        <SelectValue placeholder="Bulk status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={ALL_PLATOONS_VALUE}>
-                          All platoons
-                        </SelectItem>
-                        {getPlatoonOptions(basePersonnel).map((platoon) => (
-                          <SelectItem key={platoon} value={platoon}>
-                            {platoon}
+                        {CONDUCT_ATTENDANCE_REASON_VALUES.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    <Input
+                      value={bulkRemarks}
+                      onChange={(event) => setBulkRemarks(event.target.value)}
+                      placeholder={
+                        bulkReason === "Present"
+                          ? "Default"
+                          : bulkReason === "Other"
+                            ? "Bulk remarks required for Other"
+                            : "Optional bulk remarks"
+                      }
+                      className={cn(
+                        "rounded-xl border-emerald-950/10 bg-white/85",
+                        bulkRequiresRemarks &&
+                          "border-red-300 focus-visible:ring-red-200",
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={applyBulkUpdate}
+                      disabled={!canApplyBulk}
+                    >
+                      Apply to selected
+                    </Button>
                   </div>
                 </div>
 
@@ -464,6 +732,10 @@ export function ConductAttendanceDialog({
                     filteredPersonnel.map((person) => {
                       const draftEntry = draftByKey[person.personnelKey];
                       const reason = getDraftReason(draftEntry);
+                      const isSelected = selectedPersonnelKeySet.has(
+                        person.personnelKey,
+                      );
+                      const statusTone = getAttendanceStatusTone(reason);
                       const shouldShowRemarks =
                         reason === "Other" ||
                         reason === "Fall Out" ||
@@ -476,12 +748,23 @@ export function ConductAttendanceDialog({
                       return (
                         <div
                           key={person.personnelKey}
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isSelected}
+                          aria-label={`${isSelected ? "Unselect" : "Select"} ${person.rank} ${person.name}`}
+                          onClick={(event) =>
+                            handlePersonnelCardClick(event, person.personnelKey)
+                          }
+                          onKeyDown={(event) =>
+                            handlePersonnelCardKeyDown(event, person.personnelKey)
+                          }
                           className={cn(
-                            "rounded-[28px] border border-emerald-950/10 bg-white/90 p-4 shadow-sm shadow-emerald-950/5",
-                            reason !== "Present" && "border-rose-950/12 bg-rose-50/35",
+                            "cursor-pointer rounded-[24px] border border-emerald-950/10 bg-white/90 p-3 shadow-sm shadow-emerald-950/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70",
+                            isSelected && "ring-2 ring-emerald-300",
+                            statusTone.rowClassName,
                           )}
                         >
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-semibold text-zinc-950">
@@ -493,16 +776,30 @@ export function ConductAttendanceDialog({
                                 >
                                   {person.platoon}
                                 </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={statusTone.badgeClassName}
+                                >
+                                  {reason === "Present" ? "Participating" : reason}
+                                </Badge>
+                                {isSelected ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-emerald-700 bg-emerald-700 text-white shadow-sm shadow-emerald-950/15"
+                                  >
+                                    Selected
+                                  </Badge>
+                                ) : null}
                               </div>
-                              <p className="text-xs text-zinc-500">
-                                {reason === "Present"
-                                  ? "Implicitly present. No row will be saved."
-                                  : `Stored as ${reason}.`}
-                              </p>
                             </div>
 
-                            <div className="space-y-2">
-                              <Label>Attendance reason</Label>
+                            <div
+                              className="space-y-1"
+                              data-no-select-toggle="true"
+                            >
+                              {/* <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                                Status
+                              </p> */}
                               <Select
                                 value={reason}
                                 onValueChange={(value) =>
@@ -512,7 +809,11 @@ export function ConductAttendanceDialog({
                                   )
                                 }
                               >
-                                <SelectTrigger className="rounded-2xl border-emerald-950/10 bg-white/85">
+                                <SelectTrigger
+                                  size="sm"
+                                  className="w-full rounded-xl border-emerald-950/10 bg-white/85"
+                                  aria-label={`Attendance reason for ${person.rank} ${person.name}`}
+                                >
                                   <SelectValue placeholder="Select reason" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -527,23 +828,34 @@ export function ConductAttendanceDialog({
                           </div>
 
                           {shouldShowRemarks ? (
-                            <div className="mt-4 space-y-2">
-                              <Label htmlFor={`remarks-${person.personnelKey}`}>
-                                Remarks {reason === "Other" ? "(required)" : "(optional)"}
-                              </Label>
+                            <div
+                              className="mt-3 space-y-2"
+                              data-no-select-toggle="true"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <Label htmlFor={`remarks-${person.personnelKey}`}>
+                                  Remarks {reason === "Other" ? "(required)" : "(optional)"}
+                                </Label>
+                                {reason !== "Present" ? (
+                                  <p className="text-xs text-zinc-500">
+                                    Only non-present rows are saved.
+                                  </p>
+                                ) : null}
+                              </div>
                               <Input
                                 id={`remarks-${person.personnelKey}`}
                                 value={draftEntry?.remarks ?? ""}
                                 onChange={(event) =>
                                   setRemarks(person.personnelKey, event.target.value)
                                 }
+                                aria-label={`Remarks for ${person.rank} ${person.name}`}
                                 placeholder={
                                   reason === "Other"
                                     ? "Explain the non-present status"
                                     : "Add details if needed"
                                 }
                                 className={cn(
-                                  "rounded-2xl border-emerald-950/10 bg-white/85",
+                                  "rounded-xl border-emerald-950/10 bg-white/85",
                                   showOtherError && "border-red-300 focus-visible:ring-red-200",
                                 )}
                               />
