@@ -232,7 +232,7 @@ export function ConductsPage({
                 Track conduct participation and export WhatsApp-ready state
               </CardTitle>
               <CardDescription className="max-w-3xl leading-6">
-                Attendance is saved as non-participants only. The daily nominal-roll snapshot excludes Shark Platoon and is shared across all conducts on the same date.
+                Attendance stays sparse: Present is implicit, only non-present rows are saved, and the daily nominal-roll snapshot is shared across all conducts on the same date.
               </CardDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Badge
@@ -410,7 +410,7 @@ export function ConductsPage({
                     </p>
                     <p className="mt-1 text-sm font-semibold text-zinc-950">
                       {conduct.hasAttendance
-                        ? conduct.absenteeCount.toString().padStart(2, "0")
+                        ? conduct.nonPresentCount.toString().padStart(2, "0")
                         : "--"}
                     </p>
                   </div>
@@ -442,7 +442,7 @@ export function ConductsPage({
                       type="button"
                       onClick={() => openAttendanceDialog(conduct)}
                     >
-                      {conduct.hasAttendance ? "View Attendance" : "Mark Attendance"}
+                      {conduct.hasAttendance ? "Edit Attendance" : "Mark Attendance"}
                     </Button>
                   ) : null}
 

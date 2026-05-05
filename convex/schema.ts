@@ -142,6 +142,7 @@ export default defineSchema({
     .index("by_snapshotDay", ["snapshotDay"])
     .index("by_snapshotDate_and_personnelKey", ["snapshotDate", "personnelKey"]),
 
+  // Deprecated write path kept temporarily to support legacy attendance backfill.
   conductAbsentees: defineTable({
     conductId: v.id("conducts"),
     personnelKey: v.string(),
@@ -154,17 +155,23 @@ export default defineSchema({
     .index("by_conductId", ["conductId"])
     .index("by_conductId_and_personnelKey", ["conductId", "personnelKey"]),
 
-  trackrConducts: defineTable({
+  conductAttendanceEntries: defineTable({
+    conductId: v.id("conducts"),
+    personnelKey: v.string(),
+    rank: v.string(),
     name: v.string(),
-    trackrActivityId: v.string(),
-    date: v.string(),
-    conductDay: v.number(),
-    conductingUnitName: v.string(),
-    conductingUnitId: v.string(),
+    platoon: v.string(),
+    reason: v.union(
+      v.literal("MC"),
+      v.literal("Leave"),
+      v.literal("Off"),
+      v.literal("Fall Out"),
+      v.literal("Other"),
+    ),
+    remarks: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_trackrActivityId", ["trackrActivityId"])
-    .index("by_conductDay", ["conductDay"])
-    .index("by_createdAt", ["createdAt"]),
+    .index("by_conductId", ["conductId"])
+    .index("by_conductId_and_personnelKey", ["conductId", "personnelKey"]),
 });

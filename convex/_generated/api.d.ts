@@ -16,7 +16,6 @@ import type * as http from "../http.js";
 import type * as paradeState from "../paradeState.js";
 import type * as paradeStateSnapshotValidators from "../paradeStateSnapshotValidators.js";
 import type * as statusValidator from "../statusValidator.js";
-import type * as trackrConducts from "../trackrConducts.js";
 import type * as users from "../users.js";
 
 import type {
@@ -34,7 +33,6 @@ declare const fullApi: ApiFromModules<{
   paradeState: typeof paradeState;
   paradeStateSnapshotValidators: typeof paradeStateSnapshotValidators;
   statusValidator: typeof statusValidator;
-  trackrConducts: typeof trackrConducts;
   users: typeof users;
 }>;
 

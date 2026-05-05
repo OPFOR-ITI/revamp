@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   GOOGLE_SHEETS_ALIAS_HEADER,
   GOOGLE_SHEETS_HEADERS,
+  GOOGLE_SHEETS_TRACKR_ALIAS_HEADER,
 } from "@/lib/constants";
 
 export const personnelRecordSchema = z.object({
@@ -12,6 +13,7 @@ export const personnelRecordSchema = z.object({
   platoon: z.string(),
   designation: z.string(),
   alias: z.string().optional(),
+  trackrAlias: z.string().optional(),
   label: z.string(),
 });
 
@@ -119,23 +121,45 @@ export function normalizePersonnelRows(values: string[][]) {
   }
 
   const actualHeaders = values[0].slice(0, 5).map(trimCell);
+  const optionalHeaders = values[0].slice(4, 6).map(trimCell);
   const expectedHeaders = [...GOOGLE_SHEETS_HEADERS];
 
+  const requiredHeaders = values[0].slice(0, 4).map(trimCell);
   const baseHeadersMatch = expectedHeaders.every(
     (header, index) => actualHeaders[index] === header,
   );
-  const aliasHeader = actualHeaders[expectedHeaders.length];
-  const hasAliasColumn = aliasHeader === GOOGLE_SHEETS_ALIAS_HEADER;
+  const supportedOptionalHeaders = new Set([
+    "",
+    GOOGLE_SHEETS_ALIAS_HEADER,
+    GOOGLE_SHEETS_TRACKR_ALIAS_HEADER,
+  ]);
+  const duplicateOptionalHeaders = new Set(
+    optionalHeaders.filter(Boolean),
+  ).size !== optionalHeaders.filter(Boolean).length;
+  const hasAliasColumn = optionalHeaders.includes(GOOGLE_SHEETS_ALIAS_HEADER);
+  const hasTrackrAliasColumn = optionalHeaders.includes(
+    GOOGLE_SHEETS_TRACKR_ALIAS_HEADER,
+  );
   const headersMatch =
     baseHeadersMatch &&
-    (aliasHeader === undefined || aliasHeader === "" || hasAliasColumn);
+    !duplicateOptionalHeaders &&
+    optionalHeaders.every((header) => supportedOptionalHeaders.has(header));
 
   if (!headersMatch) {
     throw new PersonnelNormalizationError(
       "PERSONNEL_HEADERS_INVALID",
-      `Expected headers ${[...expectedHeaders, GOOGLE_SHEETS_ALIAS_HEADER].join(", ")} but received ${actualHeaders.join(", ")}.`,
+      `Expected headers ${[...expectedHeaders, GOOGLE_SHEETS_ALIAS_HEADER, GOOGLE_SHEETS_TRACKR_ALIAS_HEADER].join(", ")} but received ${requiredHeaders.concat(optionalHeaders).join(", ")}.`,
     );
   }
+
+  const aliasColumnIndex = hasAliasColumn
+    ? values[0].findIndex((header) => trimCell(header) === GOOGLE_SHEETS_ALIAS_HEADER)
+    : -1;
+  const trackrAliasColumnIndex = hasTrackrAliasColumn
+    ? values[0].findIndex(
+        (header) => trimCell(header) === GOOGLE_SHEETS_TRACKR_ALIAS_HEADER,
+      )
+    : -1;
 
   const seenKeys = new Map<string, number>();
   const personnel: PersonnelRecord[] = [];
@@ -146,8 +170,11 @@ export function normalizePersonnelRows(values: string[][]) {
     const name = trimCell(row[1]);
     const platoonCell = trimCell(row[2]);
     const designation = trimCell(row[3]);
-    const alias = hasAliasColumn ? trimCell(row[4]) : "";
-    const isBlank = !rank && !name && !platoonCell && !designation && !alias;
+    const alias = aliasColumnIndex >= 0 ? trimCell(row[aliasColumnIndex]) : "";
+    const trackrAlias =
+      trackrAliasColumnIndex >= 0 ? trimCell(row[trackrAliasColumnIndex]) : "";
+    const isBlank =
+      !rank && !name && !platoonCell && !designation && !alias && !trackrAlias;
 
     if (isBlank) {
       return;
@@ -190,6 +217,7 @@ export function normalizePersonnelRows(values: string[][]) {
       platoon,
       designation,
       alias: alias || undefined,
+      trackrAlias: trackrAlias || undefined,
     };
 
     personnel.push({

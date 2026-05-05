@@ -2,6 +2,8 @@ import { z } from "zod";
 
 const TRACKR_OPFOR_UNIT_NAME_PATTERN = /\bOPFOR\b/i;
 
+const trackrMixedIdSchema = z.union([z.string(), z.number()]);
+
 export const trackrUnitSchema = z.object({
   id: z.string().uuid("Trackr unit id must be a valid UUID."),
   name: z.string(),
@@ -52,13 +54,6 @@ export const trackrCreateActivitiesResponseSchema = z.object({
   activityIds: z.array(z.string().uuid()),
 });
 
-export const trackrAttendanceUnitsPayloadSchema = z.object({
-  activityId: z.string().uuid("Trackr activityId must be a valid UUID."),
-  unitIds: z
-    .array(z.string().uuid("Each Trackr unitId must be a valid UUID."))
-    .min(1, "At least one Trackr unitId is required."),
-});
-
 export const trackrUsersQueryPayloadSchema = z.object({
   unitIds: z
     .array(z.string().uuid("Each Trackr unitId must be a valid UUID."))
@@ -75,6 +70,97 @@ export const trackrUsersQueryResponseSchema = z.object({
   users: z.array(trackrUserSchema),
 });
 
+export const trackrStatusSchema = z
+  .object({
+    id: trackrMixedIdSchema,
+    name: z.string(),
+  })
+  .passthrough();
+
+export const trackrStatusesResponseSchema = z
+  .union([
+    z.object({ statuses: z.array(trackrStatusSchema) }).passthrough(),
+    z.array(trackrStatusSchema),
+  ])
+  .transform((value) => ({
+    statuses: Array.isArray(value) ? value : value.statuses,
+  }));
+
+export const trackrAttendanceUserAddPayloadSchema = z.object({
+  activityId: z.string().uuid("Trackr activityId must be a valid UUID."),
+  userIds: z
+    .array(z.string().uuid("Each Trackr userId must be a valid UUID."))
+    .min(1, "At least one Trackr userId is required."),
+});
+
+const trackrAttendanceStatusReferenceSchema = z
+  .object({
+    id: trackrMixedIdSchema.optional(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const trackrAttendanceUserReferenceSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+export const trackrActivityAttendanceRowSchema = z
+  .object({
+    id: trackrMixedIdSchema.optional(),
+    attendanceId: trackrMixedIdSchema.optional(),
+    userId: z.string().uuid().optional(),
+    name: z.string().optional(),
+    remarks: z.string().nullable().optional(),
+    statusId: trackrMixedIdSchema.optional(),
+    status: z.union([trackrAttendanceStatusReferenceSchema, z.string()]).optional(),
+    user: trackrAttendanceUserReferenceSchema.optional(),
+  })
+  .passthrough();
+
+export const trackrActivityAttendanceResponseSchema = z
+  .union([
+    z.object({ attendances: z.array(trackrActivityAttendanceRowSchema) }).passthrough(),
+    z.object({ attendance: z.array(trackrActivityAttendanceRowSchema) }).passthrough(),
+    z.object({ users: z.array(trackrActivityAttendanceRowSchema) }).passthrough(),
+    z.object({ data: z.array(trackrActivityAttendanceRowSchema) }).passthrough(),
+    z.array(trackrActivityAttendanceRowSchema),
+  ])
+  .transform((value) => {
+    if (Array.isArray(value)) {
+      return { attendances: value };
+    }
+
+    return {
+      attendances:
+        value.attendances ??
+        ("attendance" in value ? value.attendance : undefined) ??
+        ("users" in value ? value.users : undefined) ??
+        ("data" in value ? value.data : undefined) ??
+        [],
+    };
+  });
+
+export const trackrAttendancePatchItemSchema = z
+  .object({
+    attendanceId: trackrMixedIdSchema,
+    statusId: trackrMixedIdSchema,
+    remarks: z.string().trim().min(1).optional(),
+  })
+  .passthrough();
+
+export const trackrAttendancePatchPayloadSchema = z
+  .object({
+    activityId: z.string().uuid("Trackr activityId must be a valid UUID."),
+    attendances: z
+      .array(trackrAttendancePatchItemSchema)
+      .min(1, "At least one Trackr attendance update is required."),
+  })
+  .passthrough();
+
+export type TrackrMixedId = z.infer<typeof trackrMixedIdSchema>;
 export type TrackrUnit = z.infer<typeof trackrUnitSchema>;
 export type TrackrCategory = z.infer<typeof trackrCategorySchema>;
 export type TrackrActivity = z.infer<typeof trackrActivitySchema>;
@@ -93,15 +179,31 @@ export type TrackrCreateActivitiesPayload = z.infer<
 export type TrackrCreateActivitiesResponse = z.infer<
   typeof trackrCreateActivitiesResponseSchema
 >;
-export type TrackrAttendanceUnitsPayload = z.infer<
-  typeof trackrAttendanceUnitsPayloadSchema
->;
 export type TrackrUsersQueryPayload = z.infer<
   typeof trackrUsersQueryPayloadSchema
 >;
 export type TrackrUser = z.infer<typeof trackrUserSchema>;
 export type TrackrUsersQueryResponse = z.infer<
   typeof trackrUsersQueryResponseSchema
+>;
+export type TrackrStatus = z.infer<typeof trackrStatusSchema>;
+export type TrackrStatusesResponse = z.infer<
+  typeof trackrStatusesResponseSchema
+>;
+export type TrackrAttendanceUserAddPayload = z.infer<
+  typeof trackrAttendanceUserAddPayloadSchema
+>;
+export type TrackrActivityAttendanceRow = z.infer<
+  typeof trackrActivityAttendanceRowSchema
+>;
+export type TrackrActivityAttendanceResponse = z.infer<
+  typeof trackrActivityAttendanceResponseSchema
+>;
+export type TrackrAttendancePatchItem = z.infer<
+  typeof trackrAttendancePatchItemSchema
+>;
+export type TrackrAttendancePatchPayload = z.infer<
+  typeof trackrAttendancePatchPayloadSchema
 >;
 
 export function isTrackrOpforUnitName(value: string) {

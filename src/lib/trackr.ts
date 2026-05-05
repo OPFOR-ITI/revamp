@@ -2,13 +2,17 @@ import "server-only";
 
 import {
   trackrActivitiesResponseSchema,
+  trackrActivityAttendanceResponseSchema,
+  trackrAttendancePatchPayloadSchema,
+  trackrAttendanceUserAddPayloadSchema,
   trackrCreateActivitiesPayloadSchema,
   trackrCreateActivitiesResponseSchema,
-  trackrAttendanceUnitsPayloadSchema,
+  trackrStatusesResponseSchema,
   trackrUsersQueryPayloadSchema,
   trackrUsersQueryResponseSchema,
+  type TrackrAttendancePatchPayload,
+  type TrackrAttendanceUserAddPayload,
   type TrackrCreateActivitiesPayload,
-  type TrackrAttendanceUnitsPayload,
   type TrackrUsersQueryPayload,
 } from "@/lib/trackr-schema";
 
@@ -186,13 +190,47 @@ export class TrackrClient {
     });
   }
 
-  async submitAttendanceUnits(
-    payload: TrackrAttendanceUnitsPayload,
+  async addAttendanceUsers(
+    payload: TrackrAttendanceUserAddPayload,
     { signal }: { signal?: AbortSignal } = {},
   ) {
-    const parsedPayload = trackrAttendanceUnitsPayloadSchema.parse(payload);
+    const parsedPayload = trackrAttendanceUserAddPayloadSchema.parse(payload);
 
-    return await this.request("POST", "/api/v2/attendance/units", {
+    return await this.request("POST", "/api/v1/attendance/users", {
+      body: parsedPayload,
+      signal,
+    });
+  }
+
+  async listStatuses({ signal }: { signal?: AbortSignal } = {}) {
+    const response = await this.request("GET", "/api/v1/statuses", {
+      signal,
+    });
+
+    return trackrStatusesResponseSchema.parse(response);
+  }
+
+  async getActivityAttendance(
+    activityId: string,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const response = await this.request(
+      "GET",
+      `/api/v1/attendance/activities/${activityId}`,
+      {
+        signal,
+      },
+    );
+
+    return trackrActivityAttendanceResponseSchema.parse(response);
+  }
+
+  async patchActivityAttendance(
+    payload: TrackrAttendancePatchPayload,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const parsedPayload = trackrAttendancePatchPayloadSchema.parse(payload);
+    return await this.request("PATCH", "/api/v1/attendance/units", {
       body: parsedPayload,
       signal,
     });
@@ -242,8 +280,19 @@ export class TrackrClient {
     })) as TResponse;
   }
 
+  async patchJson<TResponse>(
+    path: string,
+    body: unknown,
+    options: Omit<TrackrRequestOptions, "body"> = {},
+  ) {
+    return (await this.request("PATCH", path, {
+      ...options,
+      body,
+    })) as TResponse;
+  }
+
   private async request(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     { query, body, signal }: TrackrRequestOptions = {},
   ) {

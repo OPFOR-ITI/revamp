@@ -1,6 +1,11 @@
 import type { DutyAssignmentDoc } from "@/components/duties/types";
 import type { ParadeStateRecordDoc } from "@/components/parade-state/types";
 import {
+  compareParadeStatePrimaryRecords,
+  formatParadeStateStatusLabel,
+  getCompanyBucketForParadeStateStatus,
+} from "@/lib/parade-state-precedence";
+import {
   dateStringToDayIndex,
   formatCompactDateLabel,
   isValidTimeHHmm,
@@ -193,18 +198,6 @@ const PLATOON_SECTION_LABELS = {
   "Shark Platoon": "F. Shark Platoon",
 } as const;
 
-const PRIMARY_BUCKET_PRECEDENCE: Record<CompanyOutBucket, number> = {
-  HOSPITALISED: 0,
-  MC: 1,
-  RSO: 2,
-  EX_STAY_IN: 3,
-  LEAVE: 4,
-  OFF: 5,
-  DB: 6,
-  BOOKED_OUT: 7,
-  OTHERS: 8,
-};
-
 function normalizeComparableText(value: string) {
   return value.trim().replace(/\s+/g, " ").toUpperCase();
 }
@@ -232,46 +225,11 @@ function isTrooperRank(rank: string) {
 }
 
 function getCompanyBucketForStatus(record: ParadeReportRecord): CompanyOutBucket {
-  switch (normalizeComparableText(record.status)) {
-    case "HOSPITALISED":
-      return "HOSPITALISED";
-    case "MC":
-      return "MC";
-    case "RSO":
-      return "RSO";
-    case "EX STAY IN":
-      return "EX_STAY_IN";
-    case "LEAVE":
-      return "LEAVE";
-    case "OFF":
-      return "OFF";
-    case "DB":
-      return "DB";
-    case "BOOKED OUT":
-      return "BOOKED_OUT";
-    default:
-      return "OTHERS";
-  }
+  return getCompanyBucketForParadeStateStatus(record.status);
 }
 
 function comparePrimaryRecords(left: ParadeReportRecord, right: ParadeReportRecord) {
-  const bucketDelta =
-    PRIMARY_BUCKET_PRECEDENCE[getCompanyBucketForStatus(left)] -
-    PRIMARY_BUCKET_PRECEDENCE[getCompanyBucketForStatus(right)];
-
-  if (bucketDelta !== 0) {
-    return bucketDelta;
-  }
-
-  if (right.createdAt !== left.createdAt) {
-    return right.createdAt - left.createdAt;
-  }
-
-  if (right.updatedAt !== left.updatedAt) {
-    return right.updatedAt - left.updatedAt;
-  }
-
-  return 0;
+  return compareParadeStatePrimaryRecords(left, right);
 }
 
 function formatCompactDateRange(record: Pick<ParadeStateRecordDoc, "startDate" | "endDate" | "isPermanent">) {
@@ -295,11 +253,7 @@ function getInclusiveDurationDays(record: Pick<ParadeStateRecordDoc, "startDate"
 }
 
 function formatStatusLabel(record: Pick<ParadeStateRecordDoc, "status" | "customStatus">) {
-  if (record.status === "Others") {
-    return record.customStatus?.trim() || "Others";
-  }
-
-  return record.status;
+  return formatParadeStateStatusLabel(record.status, record.customStatus);
 }
 
 function formatStatusSummary(record: StatusLikeRecord) {

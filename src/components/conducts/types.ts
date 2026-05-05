@@ -1,5 +1,9 @@
 import type { Doc } from "../../../convex/_generated/dataModel";
 import type {
+  ConductAttendanceReason,
+  ConductNonPresentReason,
+} from "@/lib/conduct-attendance";
+import type {
   ConductWhatsappData,
   ConductWhatsappSection,
 } from "@/lib/conduct-whatsapp";
@@ -7,6 +11,7 @@ import type {
 export type ConductDoc = Doc<"conducts">;
 export type ConductNominalRollSnapshotDoc = Doc<"conductNominalRollSnapshots">;
 export type ConductAbsenteeDoc = Doc<"conductAbsentees">;
+export type ConductAttendanceEntryDoc = Doc<"conductAttendanceEntries">;
 
 export type ConductSnapshotStatus =
   | "ready"
@@ -22,7 +27,7 @@ export type ConductNominalRollSeed = {
 };
 
 export type ConductListItem = ConductDoc & {
-  absenteeCount: number;
+  nonPresentCount: number;
   participantCount: number | null;
   nominalRollCount: number | null;
   snapshotStatus: ConductSnapshotStatus;
@@ -30,13 +35,20 @@ export type ConductListItem = ConductDoc & {
   whatsappData: ConductWhatsappData | null;
 };
 
-export type ConductAttendanceState = {
+export type ConductAttendanceEditorState = {
   conduct: ConductDoc;
   snapshotStatus: ConductSnapshotStatus;
-  platoonOptions: string[];
   snapshotRows: ConductNominalRollSnapshotDoc[];
-  absenteePersonnelKeys: string[];
+  attendanceEntries: ConductAttendanceEntryDoc[];
   attendanceInitialized: boolean;
+  counts: {
+    nominalRollCount: number;
+    nonPresentCount: number;
+    presentCount: number;
+  };
 };
+
+export type ConductAttendanceDraftReason = ConductAttendanceReason;
+export type ConductAttendancePersistedReason = ConductNonPresentReason;
 
 export type { ConductWhatsappData, ConductWhatsappSection };

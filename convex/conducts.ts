@@ -1,5 +1,5 @@
-import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
+import { ConvexError, v } from "convex/values";
 
 import {
   CONDUCT_ELIGIBLE_PLATOON_ORDER,
@@ -8,13 +8,21 @@ import {
   isConductEligiblePlatoon,
 } from "../src/lib/conduct-whatsapp";
 import {
+  type ConductNonPresentReason,
+} from "../src/lib/conduct-attendance";
+import { MAX_REMARKS_LENGTH } from "../src/lib/constants";
+import {
   dateStringToDayIndex,
   getTodaySingaporeDayIndex,
   isValidDateString,
 } from "../src/lib/date";
+import {
+  formatParadeStateStatusLabel,
+  pickPrimaryParadeStateRecord,
+} from "../src/lib/parade-state-precedence";
+import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
 import { ensureCurrentUser } from "./users";
 
 const nominalRollSeedItemValidator = v.object({
@@ -23,6 +31,34 @@ const nominalRollSeedItemValidator = v.object({
   name: v.string(),
   platoon: v.string(),
 });
+
+const conductAttendanceEntryReasonValidator = v.union(
+  v.literal("MC"),
+  v.literal("Leave"),
+  v.literal("Off"),
+  v.literal("Fall Out"),
+  v.literal("Other"),
+);
+
+const conductAttendanceEntryInputValidator = v.object({
+  personnelKey: v.string(),
+  reason: conductAttendanceEntryReasonValidator,
+  remarks: v.optional(v.string()),
+});
+
+type EffectiveAttendanceEntry = {
+  _id: Id<"conductAttendanceEntries">;
+  _creationTime: number;
+  conductId: Id<"conducts">;
+  personnelKey: string;
+  rank: string;
+  name: string;
+  platoon: string;
+  reason: ConductNonPresentReason;
+  remarks?: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -48,6 +84,31 @@ function normalizeConductDescription(value?: string) {
   return normalizeText(trimmed);
 }
 
+function normalizeAttendanceRemarks(
+  value: string | undefined,
+  reason: ConductNonPresentReason,
+) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    if (reason === "Other") {
+      throw new ConvexError('Remarks are required when the reason is "Other".');
+    }
+
+    return undefined;
+  }
+
+  const normalized = trimmed.replace(/\s+/g, " ");
+
+  if (normalized.length > MAX_REMARKS_LENGTH) {
+    throw new ConvexError(
+      `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`,
+    );
+  }
+
+  return normalized;
+}
+
 function validateConductDate(value: string) {
   if (!isValidDateString(value)) {
     throw new ConvexError('Conduct date must use the format "YYYY-MM-DD".');
@@ -64,7 +125,10 @@ function validateNumberOfPeriods(value: number) {
   return value;
 }
 
-function sortConductsDescending<T extends { createdAt: number }>(left: T, right: T) {
+function sortConductsDescending<T extends { createdAt: number }>(
+  left: T,
+  right: T,
+) {
   return right.createdAt - left.createdAt;
 }
 
@@ -152,7 +216,19 @@ async function getSnapshotRowsForDate(
     .sort(sortSnapshotPersonnel);
 }
 
-async function getAbsenteeRowsForConduct(
+async function getStoredAttendanceEntriesForConduct(
+  ctx: QueryCtx | MutationCtx,
+  conductId: Id<"conducts">,
+) {
+  const rows = await ctx.db
+    .query("conductAttendanceEntries")
+    .withIndex("by_conductId", (q) => q.eq("conductId", conductId))
+    .collect();
+
+  return rows.filter((row) => isConductEligiblePlatoon(row.platoon));
+}
+
+async function getLegacyAbsenteeRowsForConduct(
   ctx: QueryCtx | MutationCtx,
   conductId: Id<"conducts">,
 ) {
@@ -162,6 +238,131 @@ async function getAbsenteeRowsForConduct(
     .collect();
 
   return rows.filter((row) => isConductEligiblePlatoon(row.platoon));
+}
+
+function mapLegacyAbsenteeToAttendanceEntry(
+  row: Awaited<ReturnType<typeof getLegacyAbsenteeRowsForConduct>>[number],
+): EffectiveAttendanceEntry {
+  return {
+    conductId: row.conductId,
+    personnelKey: row.personnelKey,
+    rank: row.rank,
+    name: row.name,
+    platoon: row.platoon,
+    reason: "Other" as const,
+    remarks: "Legacy record (original reason unavailable)",
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    _id: row._id as unknown as Id<"conductAttendanceEntries">,
+    _creationTime: row._creationTime,
+  };
+}
+
+async function getEffectiveAttendanceEntriesForConduct(
+  ctx: QueryCtx | MutationCtx,
+  conductId: Id<"conducts">,
+): Promise<EffectiveAttendanceEntry[]> {
+  const [storedEntries, legacyRows] = await Promise.all([
+    getStoredAttendanceEntriesForConduct(ctx, conductId),
+    getLegacyAbsenteeRowsForConduct(ctx, conductId),
+  ]);
+  const entriesByKey = new Map<string, EffectiveAttendanceEntry>(
+    storedEntries.map((entry) => [
+      entry.personnelKey,
+      entry as EffectiveAttendanceEntry,
+    ] as const),
+  );
+
+  for (const legacyRow of legacyRows) {
+    if (!entriesByKey.has(legacyRow.personnelKey)) {
+      entriesByKey.set(legacyRow.personnelKey, mapLegacyAbsenteeToAttendanceEntry(legacyRow));
+    }
+  }
+
+  return Array.from(entriesByKey.values()).sort(sortSnapshotPersonnel);
+}
+
+async function getActiveParadeStateRecordsForDay(
+  ctx: QueryCtx | MutationCtx,
+  targetDay: number,
+) {
+  const [permanentRecords, datedRecords] = await Promise.all([
+    ctx.db
+      .query("paradeStateRecords")
+      .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
+      .collect(),
+    ctx.db
+      .query("paradeStateRecords")
+      .withIndex("by_endDay", (q) => q.gte("endDay", targetDay))
+      .collect(),
+  ]);
+
+  return [...permanentRecords, ...datedRecords].filter(
+    (record) => record.affectParadeState && record.startDay <= targetDay,
+  );
+}
+
+function buildAttendanceSummary(
+  snapshotRows: Awaited<ReturnType<typeof getSnapshotRowsForDate>>,
+  attendanceEntries: { personnelKey: string }[],
+) {
+  const nonPresentCount = attendanceEntries.length;
+  const nominalRollCount = snapshotRows.length;
+
+  return {
+    nominalRollCount,
+    nonPresentCount,
+    presentCount: Math.max(nominalRollCount - nonPresentCount, 0),
+  };
+}
+
+function normalizeAttendanceEntryInputs(
+  entries: {
+    personnelKey: string;
+    reason: ConductNonPresentReason;
+    remarks?: string;
+  }[],
+  snapshotByKey: Map<
+    string,
+    Awaited<ReturnType<typeof getSnapshotRowsForDate>>[number]
+  >,
+) {
+  const nextEntries = new Map<
+    string,
+    {
+      personnelKey: string;
+      reason: ConductNonPresentReason;
+      remarks?: string;
+      person: Awaited<ReturnType<typeof getSnapshotRowsForDate>>[number];
+    }
+  >();
+
+  for (const entry of entries) {
+    const personnelKey = normalizeText(entry.personnelKey);
+
+    if (!personnelKey) {
+      continue;
+    }
+
+    const person = snapshotByKey.get(personnelKey);
+
+    if (!person) {
+      throw new ConvexError(
+        "All saved attendance rows must belong to the conduct snapshot.",
+      );
+    }
+
+    nextEntries.set(personnelKey, {
+      personnelKey,
+      reason: entry.reason,
+      remarks: normalizeAttendanceRemarks(entry.remarks, entry.reason),
+      person,
+    });
+  }
+
+  return Array.from(nextEntries.values()).sort((left, right) =>
+    sortSnapshotPersonnel(left.person, right.person),
+  );
 }
 
 async function ensureSnapshotForTodayIfMissing(
@@ -187,8 +388,10 @@ async function ensureSnapshotForTodayIfMissing(
     return existing;
   }
 
-  if (day !== getTodaySingaporeDayIndex()) {
-    if (day > getTodaySingaporeDayIndex()) {
+  const todayDay = getTodaySingaporeDayIndex();
+
+  if (day !== todayDay) {
+    if (day > todayDay) {
       throw new ConvexError(
         "Attendance can only be initialized on the conduct date.",
       );
@@ -253,28 +456,30 @@ export const listConductsForDate = query({
 
     return await Promise.all(
       conducts.sort(sortConductsDescending).map(async (conduct) => {
-        const absentees = await getAbsenteeRowsForConduct(ctx, conduct._id);
-        const absenteeCount = absentees.length;
+        const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
+          ctx,
+          conduct._id,
+        );
+        const nonPresentCount = attendanceEntries.length;
+        const hasAttendance =
+          conduct.attendanceInitializedAt !== undefined || nonPresentCount > 0;
         const whatsappData =
-          conduct.attendanceInitializedAt !== undefined && snapshotExists
+          hasAttendance && snapshotExists
             ? buildConductWhatsappData({
                 conductName: conduct.name,
                 date: conduct.date,
                 snapshot: snapshotRows,
-                absentees,
+                absentees: attendanceEntries,
               })
             : null;
 
         return {
           ...conduct,
-          absenteeCount,
-          participantCount:
-            conduct.attendanceInitializedAt !== undefined && snapshotExists
-              ? nominalRollCount - absenteeCount
-              : null,
+          nonPresentCount,
+          participantCount: hasAttendance && snapshotExists ? nominalRollCount - nonPresentCount : null,
           nominalRollCount: snapshotExists ? nominalRollCount : null,
           snapshotStatus,
-          hasAttendance: conduct.attendanceInitializedAt !== undefined,
+          hasAttendance,
           whatsappData,
         };
       }),
@@ -302,7 +507,7 @@ export const getConductSnapshotSummaryForDate = query({
   },
 });
 
-export const getConductAttendanceState = query({
+export const getConductAttendanceEditorState = query({
   args: {
     conductId: v.id("conducts"),
   },
@@ -319,18 +524,19 @@ export const getConductAttendanceState = query({
     }
 
     const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date, conduct.conductDay);
-    const absentees = await getAbsenteeRowsForConduct(ctx, conduct._id);
-    const platoonOptions = CONDUCT_ELIGIBLE_PLATOON_ORDER.filter((platoon) =>
-      snapshotRows.length > 0 ? snapshotRows.some((row) => row.platoon === platoon) : true,
+    const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
     );
 
     return {
       conduct,
       snapshotStatus: resolveConductSnapshotStatus(conduct.date, snapshotRows.length > 0),
-      platoonOptions,
       snapshotRows,
-      absenteePersonnelKeys: absentees.map((row) => row.personnelKey),
-      attendanceInitialized: conduct.attendanceInitializedAt !== undefined,
+      attendanceEntries,
+      attendanceInitialized:
+        conduct.attendanceInitializedAt !== undefined || attendanceEntries.length > 0,
+      counts: buildAttendanceSummary(snapshotRows, attendanceEntries),
     };
   },
 });
@@ -394,8 +600,16 @@ export const updateConduct = mutation({
 
     const nextDate = normalizeText(args.date);
     const isDateChanging = existing.date !== nextDate;
+    const [attendanceEntries, legacyRows] = await Promise.all([
+      getStoredAttendanceEntriesForConduct(ctx, existing._id),
+      getLegacyAbsenteeRowsForConduct(ctx, existing._id),
+    ]);
+    const hasAttendance =
+      existing.attendanceInitializedAt !== undefined ||
+      attendanceEntries.length > 0 ||
+      legacyRows.length > 0;
 
-    if (isDateChanging && existing.attendanceInitializedAt !== undefined) {
+    if (isDateChanging && hasAttendance) {
       throw new ConvexError(
         "Conduct date cannot be changed after attendance has been recorded.",
       );
@@ -431,10 +645,17 @@ export const deleteConduct = mutation({
       throw new ConvexError("The selected conduct no longer exists.");
     }
 
-    const absentees = await getAbsenteeRowsForConduct(ctx, conduct._id);
+    const [attendanceEntries, legacyRows] = await Promise.all([
+      getStoredAttendanceEntriesForConduct(ctx, conduct._id),
+      getLegacyAbsenteeRowsForConduct(ctx, conduct._id),
+    ]);
 
-    for (const absentee of absentees) {
-      await ctx.db.delete(absentee._id);
+    for (const entry of attendanceEntries) {
+      await ctx.db.delete(entry._id);
+    }
+
+    for (const row of legacyRows) {
+      await ctx.db.delete(row._id);
     }
 
     await ctx.db.delete(conduct._id);
@@ -443,10 +664,167 @@ export const deleteConduct = mutation({
   },
 });
 
-export const setConductAbsentees = mutation({
+export const migrateLegacyConductAbsenteesToAttendanceEntries = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "conducts.manage",
+    });
+
+    const legacyRows = await ctx.db.query("conductAbsentees").collect();
+    let insertedCount = 0;
+    let skippedCount = 0;
+
+    for (const row of legacyRows) {
+      const existing = await ctx.db
+        .query("conductAttendanceEntries")
+        .withIndex("by_conductId_and_personnelKey", (q) =>
+          q.eq("conductId", row.conductId).eq("personnelKey", row.personnelKey),
+        )
+        .unique();
+
+      if (existing) {
+        skippedCount += 1;
+        continue;
+      }
+
+      await ctx.db.insert("conductAttendanceEntries", {
+        conductId: row.conductId,
+        personnelKey: row.personnelKey,
+        rank: row.rank,
+        name: row.name,
+        platoon: row.platoon,
+        reason: "Other",
+        remarks: "Legacy record (original reason unavailable)",
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+      insertedCount += 1;
+    }
+
+    return {
+      insertedCount,
+      skippedCount,
+      totalLegacyRows: legacyRows.length,
+    };
+  },
+});
+
+export const autoMarkConductAttendanceFromParadeState = mutation({
   args: {
     conductId: v.id("conducts"),
-    absenteePersonnelKeys: v.array(v.string()),
+    nominalRollSeed: v.optional(v.array(nominalRollSeedItemValidator)),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "conductAttendance.manage",
+    });
+
+    const conduct = await ctx.db.get(args.conductId);
+
+    if (!conduct) {
+      throw new ConvexError("The selected conduct no longer exists.");
+    }
+
+    const snapshotRows = await ensureSnapshotForTodayIfMissing(ctx, {
+      date: conduct.date,
+      day: conduct.conductDay,
+      nominalRollSeed: args.nominalRollSeed,
+    });
+    const activeRecords = await getActiveParadeStateRecordsForDay(
+      ctx,
+      conduct.conductDay,
+    );
+    const recordsByPersonnelKey = new Map<string, typeof activeRecords>();
+
+    for (const record of activeRecords) {
+      const existing = recordsByPersonnelKey.get(record.personnelKey) ?? [];
+      existing.push(record);
+      recordsByPersonnelKey.set(record.personnelKey, existing);
+    }
+
+    const attendanceEntries: Array<{
+      personnelKey: string;
+      rank: string;
+      name: string;
+      platoon: string;
+      reason: ConductNonPresentReason;
+      remarks?: string;
+    }> = [];
+
+    for (const person of snapshotRows) {
+      const primaryRecord = pickPrimaryParadeStateRecord(
+        recordsByPersonnelKey.get(person.personnelKey) ?? [],
+      );
+
+      if (!primaryRecord) {
+        continue;
+      }
+
+      const normalizedStatus = normalizeText(primaryRecord.status).toUpperCase();
+
+      if (normalizedStatus === "MC") {
+        attendanceEntries.push({
+          personnelKey: person.personnelKey,
+          rank: person.rank,
+          name: person.name,
+          platoon: person.platoon,
+          reason: "MC",
+        });
+        continue;
+      }
+
+      if (normalizedStatus === "LEAVE") {
+        attendanceEntries.push({
+          personnelKey: person.personnelKey,
+          rank: person.rank,
+          name: person.name,
+          platoon: person.platoon,
+          reason: "Leave",
+        });
+        continue;
+      }
+
+      if (normalizedStatus === "OFF" || normalizedStatus === "BOOKED OUT") {
+        attendanceEntries.push({
+          personnelKey: person.personnelKey,
+          rank: person.rank,
+          name: person.name,
+          platoon: person.platoon,
+          reason: "Off",
+        });
+        continue;
+      }
+
+      attendanceEntries.push({
+        personnelKey: person.personnelKey,
+        rank: person.rank,
+        name: person.name,
+        platoon: person.platoon,
+        reason: "Other",
+        remarks: formatParadeStateStatusLabel(
+          primaryRecord.status,
+          primaryRecord.customStatus,
+        ),
+      });
+    }
+
+    attendanceEntries.sort(sortSnapshotPersonnel);
+
+    return {
+      snapshotRows,
+      attendanceEntries,
+      counts: buildAttendanceSummary(snapshotRows, attendanceEntries),
+    };
+  },
+});
+
+export const saveConductAttendance = mutation({
+  args: {
+    conductId: v.id("conducts"),
+    attendanceEntries: v.array(conductAttendanceEntryInputValidator),
     nominalRollSeed: v.optional(v.array(nominalRollSeedItemValidator)),
   },
   handler: async (ctx, args) => {
@@ -469,49 +847,63 @@ export const setConductAbsentees = mutation({
     const snapshotByKey = new Map(
       snapshotRows.map((row) => [row.personnelKey, row] as const),
     );
-    const nextKeys = Array.from(
-      new Set(args.absenteePersonnelKeys.map((value) => normalizeText(value)).filter(Boolean)),
+    const nextEntries = normalizeAttendanceEntryInputs(
+      args.attendanceEntries as {
+        personnelKey: string;
+        reason: ConductNonPresentReason;
+        remarks?: string;
+      }[],
+      snapshotByKey,
     );
-
-    for (const key of nextKeys) {
-      if (!snapshotByKey.has(key)) {
-        throw new ConvexError("All selected absentees must belong to the conduct snapshot.");
-      }
-    }
-
-    const existingRows = await getAbsenteeRowsForConduct(ctx, conduct._id);
+    const [existingEntries, legacyRows] = await Promise.all([
+      getStoredAttendanceEntriesForConduct(ctx, conduct._id),
+      getLegacyAbsenteeRowsForConduct(ctx, conduct._id),
+    ]);
     const existingByKey = new Map(
-      existingRows.map((row) => [row.personnelKey, row] as const),
+      existingEntries.map((row) => [row.personnelKey, row] as const),
     );
-    const nextKeySet = new Set(nextKeys);
+    const nextKeys = new Set(nextEntries.map((entry) => entry.personnelKey));
     const now = Date.now();
 
-    for (const row of existingRows) {
-      if (!nextKeySet.has(row.personnelKey)) {
-        await ctx.db.delete(row._id);
+    for (const entry of existingEntries) {
+      if (!nextKeys.has(entry.personnelKey)) {
+        await ctx.db.delete(entry._id);
       }
     }
 
-    for (const key of nextKeys) {
-      if (existingByKey.has(key)) {
+    for (const entry of nextEntries) {
+      const existing = existingByKey.get(entry.personnelKey);
+
+      if (existing) {
+        if (
+          existing.reason !== entry.reason ||
+          (existing.remarks ?? undefined) !== entry.remarks
+        ) {
+          await ctx.db.patch(existing._id, {
+            reason: entry.reason,
+            remarks: entry.remarks,
+            updatedAt: now,
+          });
+        }
+
         continue;
       }
 
-      const person = snapshotByKey.get(key);
-
-      if (!person) {
-        continue;
-      }
-
-      await ctx.db.insert("conductAbsentees", {
+      await ctx.db.insert("conductAttendanceEntries", {
         conductId: conduct._id,
-        personnelKey: person.personnelKey,
-        rank: person.rank,
-        name: person.name,
-        platoon: person.platoon,
+        personnelKey: entry.personnelKey,
+        rank: entry.person.rank,
+        name: entry.person.name,
+        platoon: entry.person.platoon,
+        reason: entry.reason,
+        remarks: entry.remarks,
         createdAt: now,
         updatedAt: now,
       });
+    }
+
+    for (const legacyRow of legacyRows) {
+      await ctx.db.delete(legacyRow._id);
     }
 
     if (conduct.attendanceInitializedAt === undefined) {
@@ -520,11 +912,10 @@ export const setConductAbsentees = mutation({
       });
     }
 
-    return {
-      absenteeCount: nextKeys.length,
-      participantCount: snapshotRows.length - nextKeys.length,
-      nominalRollCount: snapshotRows.length,
-    };
+    return buildAttendanceSummary(
+      snapshotRows,
+      nextEntries,
+    );
   },
 });
 
@@ -545,19 +936,24 @@ export const getConductWhatsappMessage = query({
     }
 
     const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date, conduct.conductDay);
+    const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
+    );
+    const hasAttendance =
+      conduct.attendanceInitializedAt !== undefined || attendanceEntries.length > 0;
 
-    if (snapshotRows.length === 0 || conduct.attendanceInitializedAt === undefined) {
+    if (snapshotRows.length === 0 || !hasAttendance) {
       throw new ConvexError(
         "Attendance has not been initialized yet, so the WhatsApp message is unavailable.",
       );
     }
 
-    const absentees = await getAbsenteeRowsForConduct(ctx, conduct._id);
     const data = buildConductWhatsappData({
       conductName: conduct.name,
       date: conduct.date,
       snapshot: snapshotRows,
-      absentees,
+      absentees: attendanceEntries,
     });
 
     return {
