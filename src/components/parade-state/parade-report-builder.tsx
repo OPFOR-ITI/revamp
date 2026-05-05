@@ -18,7 +18,7 @@ import { z } from "zod";
 import { api } from "../../../convex/_generated/api";
 import type { DutyAssignmentDoc } from "@/components/duties/types";
 import { BulkSelectionList } from "@/components/parade-state/bulk-selection-list";
-import { PersonnelMultiCombobox } from "@/components/parade-state/personnel-multi-combobox";
+import { PersonnelMultiCombobox } from "@/components/personnel/personnel-multi-combobox";
 import { StatusBadge } from "@/components/parade-state/status-badge";
 import type {
   ParadeStateRecordDoc,
@@ -73,7 +73,11 @@ import {
   type ParadeReportDutyAssignment,
   type ParadeReportRecord,
 } from "@/lib/parade-report";
-import { personnelRecordSchema, type PersonnelRecord } from "@/lib/personnel";
+import {
+  formatDesignation,
+  personnelRecordSchema,
+  type PersonnelRecord,
+} from "@/lib/personnel";
 
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
 const IN_CAMP_OVERRIDE_VALUE = "__IN_CAMP__" as const;
@@ -923,6 +927,19 @@ export function ParadeReportBuilder({
                       value={overridePersonnelKeys}
                       onChange={setOverridePersonnelKeys}
                       disabled={isPersonnelLoading || personnel.length === 0}
+                      emptySelectionLabel="Select servicemen"
+                      getSingleSelectionLabel={(person) => person.label}
+                      getMultiSelectionLabel={(count) =>
+                        `${count} servicemen selected`
+                      }
+                      searchPlaceholder="Search rank, name, platoon, or designation..."
+                      getSearchText={(person) =>
+                        `${person.rank} ${person.name} ${person.platoon} ${person.designation}`
+                      }
+                      getSecondaryText={(person) =>
+                        `${person.platoon} / ${formatDesignation(person.designation)}`
+                      }
+                      enablePlatoonFilter
                     />
                   </FormItem>
 

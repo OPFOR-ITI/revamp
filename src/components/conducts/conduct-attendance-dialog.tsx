@@ -6,7 +6,7 @@ import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
-import { ConductPersonnelMultiCombobox } from "@/components/conducts/conduct-personnel-multi-combobox";
+import { PersonnelMultiCombobox } from "@/components/personnel/personnel-multi-combobox";
 import type {
   ConductAttendanceState,
   ConductListItem,
@@ -23,13 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FormItem, FormLabel } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 function StatusBanner({
@@ -86,21 +79,18 @@ export function ConductAttendanceDialog({
     api.conducts.getConductAttendanceState,
     open && conduct ? { conductId: conduct._id } : "skip",
   ) as ConductAttendanceState | undefined;
-  const [selectedPlatoon, setSelectedPlatoon] = useState("all");
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!open) {
-      setSelectedPlatoon("all");
       setSelectedKeys([]);
       return;
     }
 
     if (attendanceState) {
       setSelectedKeys(attendanceState.absenteePersonnelKeys);
-      setSelectedPlatoon("all");
     }
   }, [attendanceState, open]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -116,18 +106,9 @@ export function ConductAttendanceDialog({
       : attendanceState?.snapshotStatus === "canInitializeToday"
         ? livePersonnelSeed
         : [];
-  const pickerPersonnel =
-    selectedPlatoon === "all"
-      ? basePersonnel
-      : basePersonnel.filter((person) => person.platoon === selectedPlatoon);
   const selectedPersonnel = selectedKeys
     .map((key) => basePersonnel.find((person) => person.personnelKey === key))
     .filter((person): person is ConductNominalRollSeed => person !== undefined);
-  const platoonOptions =
-    attendanceState?.platoonOptions.filter((platoon) =>
-      basePersonnel.some((person) => person.platoon === platoon),
-    ) ??
-    [];
   const nominalRollCount = basePersonnel.length;
   const missedCount = selectedKeys.length;
   const participatingCount = Math.max(nominalRollCount - missedCount, 0);
@@ -223,34 +204,25 @@ export function ConductAttendanceDialog({
 
             {!isLocked ? (
               <>
-                <div className="grid gap-4 sm:grid-cols-[220px_minmax(0,1fr)]">
-                  <FormItem>
-                    <FormLabel>Platoon Filter</FormLabel>
-                    <Select
-                      value={selectedPlatoon}
-                      onValueChange={(value) => setSelectedPlatoon(value ?? "all")}
-                    >
-                      <SelectTrigger className="h-10 w-full">
-                        <SelectValue placeholder="Select platoon" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All platoons</SelectItem>
-                        {platoonOptions.map((platoon) => (
-                          <SelectItem key={platoon} value={platoon}>
-                            {platoon}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </FormItem>
-
+                <div className="grid gap-4">
                   <FormItem>
                     <FormLabel>Non-Participating Personnel</FormLabel>
-                    <ConductPersonnelMultiCombobox
-                      personnel={pickerPersonnel}
+                    <PersonnelMultiCombobox
+                      personnel={basePersonnel}
                       value={selectedKeys}
                       onChange={setSelectedKeys}
                       disabled={livePersonnelLoading && attendanceState.snapshotRows.length === 0}
+                      emptySelectionLabel="Select non-participants"
+                      getSingleSelectionLabel={(person) => person.name}
+                      getMultiSelectionLabel={(count) =>
+                        `${count} non-participants selected`
+                      }
+                      searchPlaceholder="Search rank, name, or platoon..."
+                      getSearchText={(person) =>
+                        `${person.rank} ${person.name} ${person.platoon}`
+                      }
+                      getSecondaryText={(person) => person.platoon}
+                      enablePlatoonFilter
                     />
                   </FormItem>
                 </div>
@@ -263,15 +235,15 @@ export function ConductAttendanceDialog({
                       </p>
                       <Badge variant="outline">{selectedPersonnel.length}</Badge>
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex max-h-32 flex-wrap content-start gap-1.5 overflow-y-auto rounded-xl pr-1">
                       {selectedPersonnel.map((person) => (
                         <div
                           key={person.personnelKey}
                           className={cn(
-                            "group flex items-center gap-2 rounded-lg border border-rose-950/10 bg-rose-950/[0.03] px-3 py-2 text-sm text-zinc-700",
+                            "flex max-w-full items-center gap-1 rounded-full border border-rose-950/10 bg-rose-950/[0.05] py-1 pl-2 pr-1 text-[10px] leading-none text-zinc-700",
                           )}
                         >
-                          <span className="min-w-0 flex-1 truncate">
+                          <span className="min-w-0 truncate whitespace-nowrap">
                             {person.rank} {person.name} / {person.platoon}
                           </span>
                           <button
@@ -281,10 +253,10 @@ export function ConductAttendanceDialog({
                                 current.filter((key) => key !== person.personnelKey),
                               )
                             }
-                            className="shrink-0 rounded-md p-0.5 text-zinc-400 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100"
+                            className="flex size-4 shrink-0 items-center justify-center rounded-full bg-rose-950/8 text-zinc-500 transition-colors hover:bg-rose-950/12 hover:text-zinc-800"
                             aria-label={`Remove ${person.rank} ${person.name}`}
                           >
-                            <X className="size-3.5" />
+                            <X className="size-2.5" />
                           </button>
                         </div>
                       ))}

@@ -50,6 +50,7 @@ export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
   "DB",
   "SEND OUT",
   "STAY OUT",
+  "BOOKED OUT",
   "MA",
   "JAIL",
 ];

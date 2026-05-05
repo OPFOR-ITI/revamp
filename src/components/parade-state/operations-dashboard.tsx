@@ -33,7 +33,7 @@ import {
 } from "@/components/parade-state/types";
 import { BulkSelectionList } from "@/components/parade-state/bulk-selection-list";
 import { PersonnelCombobox } from "@/components/parade-state/personnel-combobox";
-import { PersonnelMultiCombobox } from "@/components/parade-state/personnel-multi-combobox";
+import { PersonnelMultiCombobox } from "@/components/personnel/personnel-multi-combobox";
 import { PersonnelPreview } from "@/components/parade-state/personnel-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -928,21 +928,39 @@ function RecordDialog({
                   </FormItem>
                 </TabsContent>
                 <TabsContent value="bulk">
-                  <FormItem>
-                    <FormLabel>Servicemen</FormLabel>
-                    <PersonnelMultiCombobox
-                      personnel={personnel}
-                      value={bulkPersonnelKeys}
-                      onChange={(nextValue) => {
-                        setBulkPersonnelKeys(nextValue);
-                        setBulkError(null);
-                      }}
-                      disabled={pickerDisabled}
-                    />
-                    {bulkError ? (
-                      <p className="text-[0.8rem] font-medium text-destructive">{bulkError}</p>
-                    ) : null}
-                  </FormItem>
+                  <div className="grid gap-4">
+                    <FormItem>
+                      <FormLabel>Servicemen</FormLabel>
+                      <PersonnelMultiCombobox
+                        personnel={personnel}
+                        value={bulkPersonnelKeys}
+                        onChange={(nextValue) => {
+                          setBulkPersonnelKeys(nextValue);
+                          setBulkError(null);
+                        }}
+                        disabled={pickerDisabled}
+                        emptySelectionLabel="Select servicemen"
+                        getSingleSelectionLabel={(person) => person.label}
+                        getMultiSelectionLabel={(count) =>
+                          `${count} servicemen selected`
+                        }
+                        searchPlaceholder="Search rank, name, platoon, or designation..."
+                        getSearchText={(person) =>
+                          `${person.rank} ${person.name} ${person.platoon} ${person.designation}`
+                        }
+                        getSecondaryText={(person) =>
+                          `${person.platoon} / ${formatDesignation(person.designation)}`
+                        }
+                        enablePlatoonFilter
+                      />
+                      {bulkError ? (
+                        <p className="text-[0.8rem] font-medium text-destructive">
+                          {bulkError}
+                        </p>
+                      ) : null}
+                    </FormItem>
+                  </div>
+
                   <BulkSelectionList
                     personnel={personnel}
                     selectedKeys={bulkPersonnelKeys}
@@ -962,7 +980,7 @@ function RecordDialog({
             <div
               className={
                 selectedStatusRecordPeriodConfig.showPermanentStatusToggle
-                  ? "grid gap-5 sm:grid-cols-2"
+                  ? "grid gap-5 grid-cols-2"
                   : "grid gap-5"
               }
             >
