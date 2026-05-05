@@ -228,58 +228,14 @@ async function getStoredAttendanceEntriesForConduct(
   return rows.filter((row) => isConductEligiblePlatoon(row.platoon));
 }
 
-async function getLegacyAbsenteeRowsForConduct(
-  ctx: QueryCtx | MutationCtx,
-  conductId: Id<"conducts">,
-) {
-  const rows = await ctx.db
-    .query("conductAbsentees")
-    .withIndex("by_conductId", (q) => q.eq("conductId", conductId))
-    .collect();
-
-  return rows.filter((row) => isConductEligiblePlatoon(row.platoon));
-}
-
-function mapLegacyAbsenteeToAttendanceEntry(
-  row: Awaited<ReturnType<typeof getLegacyAbsenteeRowsForConduct>>[number],
-): EffectiveAttendanceEntry {
-  return {
-    conductId: row.conductId,
-    personnelKey: row.personnelKey,
-    rank: row.rank,
-    name: row.name,
-    platoon: row.platoon,
-    reason: "Other" as const,
-    remarks: "Legacy record (original reason unavailable)",
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    _id: row._id as unknown as Id<"conductAttendanceEntries">,
-    _creationTime: row._creationTime,
-  };
-}
-
 async function getEffectiveAttendanceEntriesForConduct(
   ctx: QueryCtx | MutationCtx,
   conductId: Id<"conducts">,
 ): Promise<EffectiveAttendanceEntry[]> {
-  const [storedEntries, legacyRows] = await Promise.all([
-    getStoredAttendanceEntriesForConduct(ctx, conductId),
-    getLegacyAbsenteeRowsForConduct(ctx, conductId),
-  ]);
-  const entriesByKey = new Map<string, EffectiveAttendanceEntry>(
-    storedEntries.map((entry) => [
-      entry.personnelKey,
-      entry as EffectiveAttendanceEntry,
-    ] as const),
-  );
-
-  for (const legacyRow of legacyRows) {
-    if (!entriesByKey.has(legacyRow.personnelKey)) {
-      entriesByKey.set(legacyRow.personnelKey, mapLegacyAbsenteeToAttendanceEntry(legacyRow));
-    }
-  }
-
-  return Array.from(entriesByKey.values()).sort(sortSnapshotPersonnel);
+  const storedEntries = await getStoredAttendanceEntriesForConduct(ctx, conductId);
+  return storedEntries
+    .map((entry) => entry as EffectiveAttendanceEntry)
+    .sort(sortSnapshotPersonnel);
 }
 
 async function getActiveParadeStateRecordsForDay(
@@ -600,14 +556,13 @@ export const updateConduct = mutation({
 
     const nextDate = normalizeText(args.date);
     const isDateChanging = existing.date !== nextDate;
-    const [attendanceEntries, legacyRows] = await Promise.all([
-      getStoredAttendanceEntriesForConduct(ctx, existing._id),
-      getLegacyAbsenteeRowsForConduct(ctx, existing._id),
-    ]);
+    const attendanceEntries = await getStoredAttendanceEntriesForConduct(
+      ctx,
+      existing._id,
+    );
     const hasAttendance =
       existing.attendanceInitializedAt !== undefined ||
-      attendanceEntries.length > 0 ||
-      legacyRows.length > 0;
+      attendanceEntries.length > 0;
 
     if (isDateChanging && hasAttendance) {
       throw new ConvexError(
@@ -645,69 +600,18 @@ export const deleteConduct = mutation({
       throw new ConvexError("The selected conduct no longer exists.");
     }
 
-    const [attendanceEntries, legacyRows] = await Promise.all([
-      getStoredAttendanceEntriesForConduct(ctx, conduct._id),
-      getLegacyAbsenteeRowsForConduct(ctx, conduct._id),
-    ]);
+    const attendanceEntries = await getStoredAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
+    );
 
     for (const entry of attendanceEntries) {
       await ctx.db.delete(entry._id);
     }
 
-    for (const row of legacyRows) {
-      await ctx.db.delete(row._id);
-    }
-
     await ctx.db.delete(conduct._id);
 
     return { deleted: true };
-  },
-});
-
-export const migrateLegacyConductAbsenteesToAttendanceEntries = mutation({
-  args: {},
-  handler: async (ctx) => {
-    await ensureCurrentUser(ctx, {
-      requireApproved: true,
-      requirePermission: "conducts.manage",
-    });
-
-    const legacyRows = await ctx.db.query("conductAbsentees").collect();
-    let insertedCount = 0;
-    let skippedCount = 0;
-
-    for (const row of legacyRows) {
-      const existing = await ctx.db
-        .query("conductAttendanceEntries")
-        .withIndex("by_conductId_and_personnelKey", (q) =>
-          q.eq("conductId", row.conductId).eq("personnelKey", row.personnelKey),
-        )
-        .unique();
-
-      if (existing) {
-        skippedCount += 1;
-        continue;
-      }
-
-      await ctx.db.insert("conductAttendanceEntries", {
-        conductId: row.conductId,
-        personnelKey: row.personnelKey,
-        rank: row.rank,
-        name: row.name,
-        platoon: row.platoon,
-        reason: "Other",
-        remarks: "Legacy record (original reason unavailable)",
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      });
-      insertedCount += 1;
-    }
-
-    return {
-      insertedCount,
-      skippedCount,
-      totalLegacyRows: legacyRows.length,
-    };
   },
 });
 
@@ -855,10 +759,10 @@ export const saveConductAttendance = mutation({
       }[],
       snapshotByKey,
     );
-    const [existingEntries, legacyRows] = await Promise.all([
-      getStoredAttendanceEntriesForConduct(ctx, conduct._id),
-      getLegacyAbsenteeRowsForConduct(ctx, conduct._id),
-    ]);
+    const existingEntries = await getStoredAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
+    );
     const existingByKey = new Map(
       existingEntries.map((row) => [row.personnelKey, row] as const),
     );
@@ -900,10 +804,6 @@ export const saveConductAttendance = mutation({
         createdAt: now,
         updatedAt: now,
       });
-    }
-
-    for (const legacyRow of legacyRows) {
-      await ctx.db.delete(legacyRow._id);
     }
 
     if (conduct.attendanceInitializedAt === undefined) {

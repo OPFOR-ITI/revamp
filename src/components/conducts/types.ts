@@ -10,7 +10,6 @@ import type {
 
 export type ConductDoc = Doc<"conducts">;
 export type ConductNominalRollSnapshotDoc = Doc<"conductNominalRollSnapshots">;
-export type ConductAbsenteeDoc = Doc<"conductAbsentees">;
 export type ConductAttendanceEntryDoc = Doc<"conductAttendanceEntries">;
 
 export type ConductSnapshotStatus =

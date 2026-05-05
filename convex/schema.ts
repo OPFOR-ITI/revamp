@@ -142,19 +142,6 @@ export default defineSchema({
     .index("by_snapshotDay", ["snapshotDay"])
     .index("by_snapshotDate_and_personnelKey", ["snapshotDate", "personnelKey"]),
 
-  // Deprecated write path kept temporarily to support legacy attendance backfill.
-  conductAbsentees: defineTable({
-    conductId: v.id("conducts"),
-    personnelKey: v.string(),
-    rank: v.string(),
-    name: v.string(),
-    platoon: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_conductId", ["conductId"])
-    .index("by_conductId_and_personnelKey", ["conductId", "personnelKey"]),
-
   conductAttendanceEntries: defineTable({
     conductId: v.id("conducts"),
     personnelKey: v.string(),
