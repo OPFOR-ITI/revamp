@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import {
+  DUPLICATE_STATUS_RECORD_MESSAGE,
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
   getStatusRecordPeriodConfig,
@@ -26,6 +27,8 @@ import {
 } from "./paradeStateSnapshotValidators";
 import { statusValidator } from "./statusValidator";
 import { ensureCurrentUser } from "./users";
+
+const DUPLICATE_STATUS_RECORD_CODE = "DUPLICATE_STATUS_RECORD";
 
 function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -165,6 +168,47 @@ function withDerivedImpact<
       record.affectParadeState,
     ),
   };
+}
+
+async function ensureNoDuplicateRecord(
+  ctx: MutationCtx,
+  {
+    personnelKey,
+    status,
+    customStatus,
+    isPermanent,
+    startDay,
+    endDay,
+  }: {
+    personnelKey: string;
+    status: Status;
+    customStatus?: string;
+    isPermanent: boolean;
+    startDay: number;
+    endDay?: number;
+  },
+) {
+  const existingRecords = await ctx.db
+    .query("paradeStateRecords")
+    .withIndex("by_personnelKey", (q) => q.eq("personnelKey", personnelKey))
+    .collect();
+
+  const duplicate = existingRecords.find(
+    (record) =>
+      record.status === status &&
+      (record.customStatus ?? undefined) === (customStatus ?? undefined) &&
+      isPermanentRecord(record) === isPermanent &&
+      record.startDay === startDay &&
+      (record.endDay ?? undefined) === (endDay ?? undefined),
+  );
+
+  if (duplicate) {
+    throw new ConvexError({
+      code: DUPLICATE_STATUS_RECORD_CODE,
+      message: DUPLICATE_STATUS_RECORD_MESSAGE,
+      recordId: duplicate._id,
+    });
+  }
 }
 
 async function listSnapshotDocsForDate(
@@ -315,8 +359,18 @@ export const createRecord = mutation({
       throw new ConvexError("Enter the custom status for Others.");
     }
 
+    const personnelKey = normalizeText(args.personnelKey);
+    await ensureNoDuplicateRecord(ctx, {
+      personnelKey,
+      status: args.status,
+      customStatus,
+      isPermanent,
+      startDay,
+      endDay,
+    });
+
     return await ctx.db.insert("paradeStateRecords", {
-      personnelKey: normalizeText(args.personnelKey),
+      personnelKey,
       rank: normalizeText(args.rank),
       name: normalizeText(args.name),
       platoon: normalizeText(args.platoon),
@@ -554,6 +608,22 @@ export const listRecordLog = query({
       .collect();
 
     return records.map(withDerivedImpact);
+  },
+});
+
+export const getRecord = query({
+  args: {
+    recordId: v.id("paradeStateRecords"),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "statusRecords.manage",
+    });
+
+    const record = await ctx.db.get(args.recordId);
+
+    return record ? withDerivedImpact(record) : null;
   },
 });
 

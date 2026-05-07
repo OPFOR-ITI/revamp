@@ -3,7 +3,7 @@
 import { format, parseISO } from "date-fns";
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { StatusBadge } from "@/components/parade-state/status-badge";
 import { ParadeReportModal } from "@/components/parade-state/parade-report-modal";
 import {
@@ -131,6 +132,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DateStepperField } from "@/components/ui/date-stepper-field";
 import {
+  DUPLICATE_STATUS_RECORD_MESSAGE,
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
   OTHER_STATUS_VALUE,
@@ -238,6 +240,47 @@ function getResolvedRecordPeriodValues(values: RecordPeriodFormValues) {
   };
 }
 
+function getDuplicateStatusRecordErrorData(
+  error: unknown,
+): DuplicateStatusRecordErrorData | null {
+  const data =
+    typeof error === "object" && error !== null && "data" in error
+      ? (error as { data?: unknown }).data
+      : null;
+
+  if (
+    typeof data === "object" &&
+    data !== null &&
+    "code" in data &&
+    "message" in data &&
+    "recordId" in data &&
+    data.code === "DUPLICATE_STATUS_RECORD" &&
+    typeof data.message === "string" &&
+    typeof data.recordId === "string"
+  ) {
+    return data as DuplicateStatusRecordErrorData;
+  }
+
+  return null;
+}
+
+function getRecordMutationErrorMessage(error: unknown, fallback: string) {
+  const duplicateError = getDuplicateStatusRecordErrorData(error);
+  if (duplicateError) {
+    return duplicateError.message;
+  }
+
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  if (error.message.includes(DUPLICATE_STATUS_RECORD_MESSAGE)) {
+    return DUPLICATE_STATUS_RECORD_MESSAGE;
+  }
+
+  return error.message;
+}
+
 const recordFormSchema = z
   .object({
     personnelKey: z.string().optional(),
@@ -273,6 +316,11 @@ type RecordDialogState =
   | { mode: "add" }
   | { mode: "edit"; record: ParadeStateRecordDoc };
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
+type DuplicateStatusRecordErrorData = {
+  code: "DUPLICATE_STATUS_RECORD";
+  message: string;
+  recordId: Id<"paradeStateRecords">;
+};
 const MAX_CURRENT_STATE_NAME_LENGTH = 50;
 
 function getEmptyRecordFormValues(): RecordFormValues {
@@ -586,6 +634,7 @@ function RecordDialog({
   personnelError,
   personnelLoading,
   submittedBy,
+  onEditDuplicateRecord,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -595,6 +644,7 @@ function RecordDialog({
   personnelError: string | null;
   personnelLoading: boolean;
   submittedBy: string;
+  onEditDuplicateRecord: (recordId: Id<"paradeStateRecords">) => void;
 }) {
   const createRecord = useMutation(api.paradeState.createRecord);
   const updateRecord = useMutation(api.paradeState.updateRecord);
@@ -766,6 +816,7 @@ function RecordDialog({
         }
 
         let successCount = 0;
+        const duplicateNames: string[] = [];
         const failedNames: string[] = [];
 
         for (const person of selectedList) {
@@ -789,18 +840,31 @@ function RecordDialog({
               remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
             });
             successCount++;
-          } catch {
-            failedNames.push(person.name);
+          } catch (error) {
+            const message = getRecordMutationErrorMessage(
+              error,
+              "Unable to save record.",
+            );
+
+            if (message === DUPLICATE_STATUS_RECORD_MESSAGE) {
+              duplicateNames.push(person.name);
+            } else {
+              failedNames.push(person.name);
+            }
           }
         }
 
-        if (failedNames.length === 0) {
+        if (duplicateNames.length === 0 && failedNames.length === 0) {
           toast.success(
             `Created ${successCount} parade-state record${successCount === 1 ? "" : "s"}.`,
           );
+        } else if (duplicateNames.length > 0 && failedNames.length === 0) {
+          toast.error(
+            `${DUPLICATE_STATUS_RECORD_MESSAGE} Duplicate${duplicateNames.length === 1 ? "" : "s"}: ${duplicateNames.join(", ")}`,
+          );
         } else {
           toast.error(
-            `Created ${successCount} of ${selectedList.length}. Failed for: ${failedNames.join(", ")}`,
+            `Created ${successCount} of ${selectedList.length}. ${duplicateNames.length > 0 ? `Duplicates: ${duplicateNames.join(", ")}. ` : ""}Failed for: ${failedNames.join(", ")}`,
           );
         }
 
@@ -858,13 +922,25 @@ function RecordDialog({
         onOpenChange(false);
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : isAddMode
-            ? "Unable to save record."
-            : "Unable to update record.",
-      );
+      const duplicateError = isAddMode
+        ? getDuplicateStatusRecordErrorData(error)
+        : null;
+
+      if (duplicateError && !bulkMode) {
+        toast.error(duplicateError.message, {
+          action: {
+            label: "Edit",
+            onClick: () => onEditDuplicateRecord(duplicateError.recordId),
+          },
+        });
+      } else {
+        toast.error(
+          getRecordMutationErrorMessage(
+            error,
+            isAddMode ? "Unable to save record." : "Unable to update record.",
+          ),
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -1632,6 +1708,7 @@ export function OperationsDashboard({
   };
 }) {
   const router = useRouter();
+  const convex = useConvex();
   const currentStateQuery =
     useQuery(api.paradeState.listCurrentState, {}) as CurrentStateRow[] | undefined;
   const recordLog = useQuery(api.paradeState.listRecordLog, {});
@@ -1785,6 +1862,17 @@ export function OperationsDashboard({
     if (recordForEndDateAdjust?._id === record._id) {
       setRecordForEndDateAdjust(null);
     }
+  }
+
+  async function handleEditDuplicateRecord(recordId: Id<"paradeStateRecords">) {
+    const record = await convex.query(api.paradeState.getRecord, { recordId });
+
+    if (!record) {
+      toast.error("The duplicate record no longer exists.");
+      return;
+    }
+
+    setRecordDialogState({ mode: "edit", record });
   }
 
   function toggleStatusFilter(status: Status) {
@@ -2581,6 +2669,7 @@ export function OperationsDashboard({
         personnelError={personnelError}
         personnelLoading={isPersonnelLoading}
         submittedBy={viewer.name}
+        onEditDuplicateRecord={handleEditDuplicateRecord}
       />
       <ParadeReportModal
         open={isParadeStateOpen}

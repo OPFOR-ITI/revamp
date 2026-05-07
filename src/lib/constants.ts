@@ -35,6 +35,8 @@ export const STATUS_DEFINITIONS = [
 
 export type Status = (typeof STATUS_DEFINITIONS)[number]["value"];
 export const OTHER_STATUS_VALUE = "Others" as const;
+export const DUPLICATE_STATUS_RECORD_MESSAGE =
+  "This serviceman already has the same status for the same dates. Edit the existing record instead of adding it again if changes are needed.";
 
 function mapStatusValues<const T extends readonly { value: string }[]>(definitions: T) {
   return definitions.map((definition) => definition.value) as [
