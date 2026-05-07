@@ -10,6 +10,7 @@ import {
 import {
   type ConductNonPresentReason,
   getConductAttendanceStatusMapping,
+  normalizeAttendanceComparableName,
 } from "../src/lib/conduct-attendance";
 import { MAX_REMARKS_LENGTH } from "../src/lib/constants";
 import {
@@ -684,12 +685,13 @@ export const autoMarkConductAttendanceFromParadeState = mutation({
       ctx,
       conduct.conductDay,
     );
-    const recordsByPersonnelKey = new Map<string, typeof activeRecords>();
+    const recordsByPersonnelName = new Map<string, typeof activeRecords>();
 
     for (const record of activeRecords) {
-      const existing = recordsByPersonnelKey.get(record.personnelKey) ?? [];
+      const personnelName = normalizeAttendanceComparableName(record.name);
+      const existing = recordsByPersonnelName.get(personnelName) ?? [];
       existing.push(record);
-      recordsByPersonnelKey.set(record.personnelKey, existing);
+      recordsByPersonnelName.set(personnelName, existing);
     }
 
     const attendanceEntries: Array<{
@@ -703,7 +705,8 @@ export const autoMarkConductAttendanceFromParadeState = mutation({
 
     for (const person of snapshotRows) {
       const primaryRecord = pickPrimaryParadeStateRecord(
-        recordsByPersonnelKey.get(person.personnelKey) ?? [],
+        recordsByPersonnelName.get(normalizeAttendanceComparableName(person.name)) ??
+          [],
       );
 
       if (!primaryRecord) {
