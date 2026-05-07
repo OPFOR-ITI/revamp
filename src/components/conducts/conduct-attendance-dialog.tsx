@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, useEffect, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -157,10 +157,15 @@ export function ConductAttendanceDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoMarking, setIsAutoMarking] = useState(false);
   const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
+  const [dirtyPersonnelKeys, setDirtyPersonnelKeys] = useState<string[]>([]);
+  const dirtyPersonnelKeysRef = useRef<Set<string>>(new Set());
+  const lastConductIdRef = useRef<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!open) {
+    const conductId = conduct?._id ?? null;
+
+    if (!open || !conductId) {
       setDraftByKey({});
       setSelectedPersonnelKeys([]);
       setSearchValue("");
@@ -168,14 +173,46 @@ export function ConductAttendanceDialog({
       setBulkReason("Present");
       setBulkRemarks("");
       setHasAttemptedSave(false);
+      dirtyPersonnelKeysRef.current.clear();
+      setDirtyPersonnelKeys([]);
+      lastConductIdRef.current = null;
       return;
     }
 
-    setDraftByKey(buildDraftState(attendanceState));
-    setSelectedPersonnelKeys([]);
-    setBulkReason("Present");
-    setBulkRemarks("");
-  }, [attendanceState, open]);
+    if (!attendanceState) {
+      return;
+    }
+
+    const incomingDraft = buildDraftState(attendanceState);
+
+    if (lastConductIdRef.current !== conductId) {
+      setDraftByKey(incomingDraft);
+      setSelectedPersonnelKeys([]);
+      setSearchValue("");
+      setPlatoonFilter(ALL_PLATOONS_VALUE);
+      setBulkReason("Present");
+      setBulkRemarks("");
+      setHasAttemptedSave(false);
+      dirtyPersonnelKeysRef.current.clear();
+      setDirtyPersonnelKeys([]);
+      lastConductIdRef.current = conductId;
+      return;
+    }
+
+    setDraftByKey((current) => {
+      const next = { ...incomingDraft };
+
+      for (const personnelKey of dirtyPersonnelKeysRef.current) {
+        if (Object.hasOwn(current, personnelKey)) {
+          next[personnelKey] = current[personnelKey];
+        } else {
+          delete next[personnelKey];
+        }
+      }
+
+      return next;
+    });
+  }, [attendanceState, conduct?._id, open]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const basePersonnel =
@@ -214,9 +251,11 @@ export function ConductAttendanceDialog({
   const filteredPersonnelKeySet = new Set(filteredPersonnelKeys);
   const selectedPersonnelKeySet = new Set(selectedPersonnelKeys);
   const nonPresentEntries = Object.entries(draftByKey);
-  const invalidOtherKeys = nonPresentEntries
-    .filter(([, entry]) => entry.reason === "Other" && !entry.remarks.trim())
-    .map(([personnelKey]) => personnelKey);
+  const invalidDirtyOtherKeys = dirtyPersonnelKeys.filter((personnelKey) => {
+    const entry = draftByKey[personnelKey];
+
+    return entry?.reason === "Other" && !entry.remarks.trim();
+  });
   const reasonBreakdown = CONDUCT_ATTENDANCE_REASON_VALUES.filter(
     (reason) => reason !== "Present",
   )
@@ -259,7 +298,7 @@ export function ConductAttendanceDialog({
     !isLocked &&
     !livePersonnelLoading &&
     !isSaving &&
-    invalidOtherKeys.length === 0 &&
+    invalidDirtyOtherKeys.length === 0 &&
     (attendanceState.snapshotRows.length > 0 || !livePersonnelError);
   const bulkRequiresRemarks = bulkReason === "Other" && !bulkRemarks.trim();
   const canApplyBulk =
@@ -268,7 +307,19 @@ export function ConductAttendanceDialog({
     !isSaving &&
     !isAutoMarking;
 
+  function markDirty(personnelKey: string) {
+    dirtyPersonnelKeysRef.current.add(personnelKey);
+    setDirtyPersonnelKeys(Array.from(dirtyPersonnelKeysRef.current));
+  }
+
+  function clearDirty() {
+    dirtyPersonnelKeysRef.current.clear();
+    setDirtyPersonnelKeys([]);
+  }
+
   function setReason(personnelKey: string, reason: ConductAttendanceReason) {
+    markDirty(personnelKey);
+
     setDraftByKey((current) => {
       if (reason === "Present") {
         const next = { ...current };
@@ -289,6 +340,8 @@ export function ConductAttendanceDialog({
   }
 
   function setRemarks(personnelKey: string, remarks: string) {
+    markDirty(personnelKey);
+
     setDraftByKey((current) => {
       const existing = current[personnelKey];
 
@@ -364,6 +417,11 @@ export function ConductAttendanceDialog({
       return;
     }
 
+    for (const personnelKey of selectedPersonnelKeys) {
+      dirtyPersonnelKeysRef.current.add(personnelKey);
+    }
+    setDirtyPersonnelKeys(Array.from(dirtyPersonnelKeysRef.current));
+
     setDraftByKey((current) => {
       const next = { ...current };
 
@@ -402,6 +460,17 @@ export function ConductAttendanceDialog({
         nominalRollSeed:
           attendanceState.snapshotRows.length > 0 ? undefined : livePersonnelSeed,
       });
+      const autoMarkedDirtyKeys = response.attendanceEntries
+        .filter((entry) => !Object.hasOwn(draftByKey, entry.personnelKey))
+        .map((entry) => entry.personnelKey);
+
+      for (const personnelKey of autoMarkedDirtyKeys) {
+        dirtyPersonnelKeysRef.current.add(personnelKey);
+      }
+
+      if (autoMarkedDirtyKeys.length > 0) {
+        setDirtyPersonnelKeys(Array.from(dirtyPersonnelKeysRef.current));
+      }
 
       setDraftByKey((current) => {
         const next = { ...current };
@@ -439,8 +508,13 @@ export function ConductAttendanceDialog({
 
     setHasAttemptedSave(true);
 
-    if (invalidOtherKeys.length > 0) {
+    if (invalidDirtyOtherKeys.length > 0) {
       toast.error('Add remarks for every "Other" attendance row before saving.');
+      return;
+    }
+
+    if (dirtyPersonnelKeys.length === 0) {
+      toast.info("No attendance changes to save.");
       return;
     }
 
@@ -449,14 +523,23 @@ export function ConductAttendanceDialog({
     try {
       await saveConductAttendance({
         conductId: conduct._id,
-        attendanceEntries: nonPresentEntries.map(([personnelKey, entry]) => ({
-          personnelKey,
-          reason: entry.reason,
-          remarks: entry.remarks.trim() || undefined,
-        })),
+        attendanceUpdates: dirtyPersonnelKeys.map((personnelKey) => {
+          const entry = draftByKey[personnelKey];
+
+          if (!entry) {
+            return { personnelKey, reason: "Present" as const };
+          }
+
+          return {
+            personnelKey,
+            reason: entry.reason,
+            remarks: entry.remarks.trim() || undefined,
+          };
+        }),
         nominalRollSeed:
           attendanceState.snapshotRows.length > 0 ? undefined : livePersonnelSeed,
       });
+      clearDirty();
       toast.success("Conduct attendance saved.");
       onOpenChange(false);
     } catch (error) {

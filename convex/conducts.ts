@@ -8,6 +8,7 @@ import {
   isConductEligiblePlatoon,
 } from "../src/lib/conduct-whatsapp";
 import {
+  type ConductAttendanceReason,
   type ConductNonPresentReason,
   getConductAttendanceStatusMapping,
   normalizeAttendanceComparableName,
@@ -34,7 +35,8 @@ const nominalRollSeedItemValidator = v.object({
   platoon: v.string(),
 });
 
-const conductAttendanceEntryReasonValidator = v.union(
+const conductAttendanceUpdateReasonValidator = v.union(
+  v.literal("Present"),
   v.literal("MC"),
   v.literal("Leave"),
   v.literal("Off"),
@@ -42,9 +44,9 @@ const conductAttendanceEntryReasonValidator = v.union(
   v.literal("Other"),
 );
 
-const conductAttendanceEntryInputValidator = v.object({
+const conductAttendanceUpdateInputValidator = v.object({
   personnelKey: v.string(),
-  reason: conductAttendanceEntryReasonValidator,
+  reason: conductAttendanceUpdateReasonValidator,
   remarks: v.optional(v.string()),
 });
 
@@ -316,10 +318,10 @@ function buildAttendanceSummary(
   };
 }
 
-function normalizeAttendanceEntryInputs(
-  entries: {
+function normalizeAttendanceUpdateInputs(
+  updates: {
     personnelKey: string;
-    reason: ConductNonPresentReason;
+    reason: ConductAttendanceReason;
     remarks?: string;
   }[],
   snapshotByKey: Map<
@@ -327,18 +329,18 @@ function normalizeAttendanceEntryInputs(
     Awaited<ReturnType<typeof getSnapshotRowsForDate>>[number]
   >,
 ) {
-  const nextEntries = new Map<
+  const nextUpdates = new Map<
     string,
     {
       personnelKey: string;
-      reason: ConductNonPresentReason;
+      reason: ConductAttendanceReason;
       remarks?: string;
       person: Awaited<ReturnType<typeof getSnapshotRowsForDate>>[number];
     }
   >();
 
-  for (const entry of entries) {
-    const personnelKey = normalizeText(entry.personnelKey);
+  for (const update of updates) {
+    const personnelKey = normalizeText(update.personnelKey);
 
     if (!personnelKey) {
       continue;
@@ -352,15 +354,18 @@ function normalizeAttendanceEntryInputs(
       );
     }
 
-    nextEntries.set(personnelKey, {
+    nextUpdates.set(personnelKey, {
       personnelKey,
-      reason: entry.reason,
-      remarks: normalizeAttendanceRemarks(entry.remarks, entry.reason),
+      reason: update.reason,
+      remarks:
+        update.reason === "Present"
+          ? undefined
+          : normalizeAttendanceRemarks(update.remarks, update.reason),
       person,
     });
   }
 
-  return Array.from(nextEntries.values()).sort((left, right) =>
+  return Array.from(nextUpdates.values()).sort((left, right) =>
     sortSnapshotPersonnel(left.person, right.person),
   );
 }
@@ -740,7 +745,7 @@ export const autoMarkConductAttendanceFromParadeState = mutation({
 export const saveConductAttendance = mutation({
   args: {
     conductId: v.id("conducts"),
-    attendanceEntries: v.array(conductAttendanceEntryInputValidator),
+    attendanceUpdates: v.array(conductAttendanceUpdateInputValidator),
     nominalRollSeed: v.optional(v.array(nominalRollSeedItemValidator)),
   },
   handler: async (ctx, args) => {
@@ -763,10 +768,10 @@ export const saveConductAttendance = mutation({
     const snapshotByKey = new Map(
       snapshotRows.map((row) => [row.personnelKey, row] as const),
     );
-    const nextEntries = normalizeAttendanceEntryInputs(
-      args.attendanceEntries as {
+    const attendanceUpdates = normalizeAttendanceUpdateInputs(
+      args.attendanceUpdates as {
         personnelKey: string;
-        reason: ConductNonPresentReason;
+        reason: ConductAttendanceReason;
         remarks?: string;
       }[],
       snapshotByKey,
@@ -778,26 +783,29 @@ export const saveConductAttendance = mutation({
     const existingByKey = new Map(
       existingEntries.map((row) => [row.personnelKey, row] as const),
     );
-    const nextKeys = new Set(nextEntries.map((entry) => entry.personnelKey));
     const now = Date.now();
 
-    for (const entry of existingEntries) {
-      if (!nextKeys.has(entry.personnelKey)) {
-        await ctx.db.delete(entry._id);
-      }
-    }
+    // Apply only submitted personnel updates so concurrent saves for other rows
+    // are not removed by a stale dialog payload.
+    for (const update of attendanceUpdates) {
+      const existing = existingByKey.get(update.personnelKey);
 
-    for (const entry of nextEntries) {
-      const existing = existingByKey.get(entry.personnelKey);
+      if (update.reason === "Present") {
+        if (existing) {
+          await ctx.db.delete(existing._id);
+        }
+
+        continue;
+      }
 
       if (existing) {
         if (
-          existing.reason !== entry.reason ||
-          (existing.remarks ?? undefined) !== entry.remarks
+          existing.reason !== update.reason ||
+          (existing.remarks ?? undefined) !== update.remarks
         ) {
           await ctx.db.patch(existing._id, {
-            reason: entry.reason,
-            remarks: entry.remarks,
+            reason: update.reason,
+            remarks: update.remarks,
             updatedAt: now,
           });
         }
@@ -807,12 +815,12 @@ export const saveConductAttendance = mutation({
 
       await ctx.db.insert("conductAttendanceEntries", {
         conductId: conduct._id,
-        personnelKey: entry.personnelKey,
-        rank: entry.person.rank,
-        name: entry.person.name,
-        platoon: entry.person.platoon,
-        reason: entry.reason,
-        remarks: entry.remarks,
+        personnelKey: update.personnelKey,
+        rank: update.person.rank,
+        name: update.person.name,
+        platoon: update.person.platoon,
+        reason: update.reason,
+        remarks: update.remarks,
         createdAt: now,
         updatedAt: now,
       });
@@ -824,10 +832,12 @@ export const saveConductAttendance = mutation({
       });
     }
 
-    return buildAttendanceSummary(
-      snapshotRows,
-      nextEntries,
+    const latestEntries = await getEffectiveAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
     );
+
+    return buildAttendanceSummary(snapshotRows, latestEntries);
   },
 });
 
