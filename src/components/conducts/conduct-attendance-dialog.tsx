@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, type MouseEvent, useEffect, useState } from "react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -121,14 +121,6 @@ function getAttendanceStatusTone(reason: ConductAttendanceReason) {
     badgeClassName:
       "border-rose-600 bg-rose-600 text-white shadow-sm shadow-rose-950/20",
   };
-}
-
-function shouldIgnoreSelectionToggle(
-  target: EventTarget | null,
-) {
-  return target instanceof HTMLElement
-    ? target.closest("[data-no-select-toggle='true']") !== null
-    : false;
 }
 
 export function ConductAttendanceDialog({
@@ -322,18 +314,7 @@ export function ConductAttendanceDialog({
     );
   }
 
-  function handlePersonnelCardClick(
-    event: MouseEvent<HTMLDivElement>,
-    personnelKey: string,
-  ) {
-    if (shouldIgnoreSelectionToggle(event.target)) {
-      return;
-    }
-
-    toggleSelectedPersonnel(personnelKey);
-  }
-
-  function handlePersonnelCardKeyDown(
+  function handlePersonnelSelectionKeyDown(
     event: KeyboardEvent<HTMLDivElement>,
     personnelKey: string,
   ) {
@@ -748,24 +729,29 @@ export function ConductAttendanceDialog({
                       return (
                         <div
                           key={person.personnelKey}
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={isSelected}
-                          aria-label={`${isSelected ? "Unselect" : "Select"} ${person.rank} ${person.name}`}
-                          onClick={(event) =>
-                            handlePersonnelCardClick(event, person.personnelKey)
-                          }
-                          onKeyDown={(event) =>
-                            handlePersonnelCardKeyDown(event, person.personnelKey)
-                          }
                           className={cn(
-                            "cursor-pointer rounded-[24px] border border-emerald-950/10 bg-white/90 p-3 shadow-sm shadow-emerald-950/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70",
+                            "rounded-[24px] border border-emerald-950/10 bg-white/90 p-3 shadow-sm shadow-emerald-950/5 transition",
                             isSelected && "ring-2 ring-emerald-300",
                             statusTone.rowClassName,
                           )}
                         >
                           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px]">
-                            <div className="space-y-1">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              aria-pressed={isSelected}
+                              aria-label={`${isSelected ? "Unselect" : "Select"} ${person.rank} ${person.name}`}
+                              onClick={() =>
+                                toggleSelectedPersonnel(person.personnelKey)
+                              }
+                              onKeyDown={(event) =>
+                                handlePersonnelSelectionKeyDown(
+                                  event,
+                                  person.personnelKey,
+                                )
+                              }
+                              className="min-h-8 cursor-pointer rounded-2xl px-1 py-0.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70"
+                            >
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-semibold text-zinc-950">
                                   {person.rank} {person.name}
@@ -793,10 +779,7 @@ export function ConductAttendanceDialog({
                               </div>
                             </div>
 
-                            <div
-                              className="space-y-1"
-                              data-no-select-toggle="true"
-                            >
+                            <div className="space-y-1">
                               {/* <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
                                 Status
                               </p> */}
@@ -828,10 +811,7 @@ export function ConductAttendanceDialog({
                           </div>
 
                           {shouldShowRemarks ? (
-                            <div
-                              className="mt-3 space-y-2"
-                              data-no-select-toggle="true"
-                            >
+                            <div className="mt-3 space-y-2">
                               <div className="flex items-center justify-between gap-2">
                                 <Label htmlFor={`remarks-${person.personnelKey}`}>
                                   Remarks {reason === "Other" ? "(required)" : "(optional)"}
