@@ -9,6 +9,7 @@ import {
 } from "../src/lib/conduct-whatsapp";
 import {
   type ConductNonPresentReason,
+  getConductAttendanceStatusMapping,
 } from "../src/lib/conduct-attendance";
 import { MAX_REMARKS_LENGTH } from "../src/lib/constants";
 import {
@@ -107,6 +108,46 @@ function normalizeAttendanceRemarks(
   }
 
   return normalized;
+}
+
+function shouldTrackParadeStateRecordForConductAttendance(record: {
+  status: string;
+  customStatus?: string;
+  affectParadeState: boolean;
+}) {
+  return (
+    record.affectParadeState ||
+    getConductAttendanceStatusMapping(record.status, record.customStatus) !== null
+  );
+}
+
+function mapParadeStateRecordToConductAttendance(record: {
+  status: string;
+  customStatus?: string;
+}): {
+  reason: ConductNonPresentReason;
+  remarks?: string;
+} {
+  const statusLabel = formatParadeStateStatusLabel(
+    record.status,
+    record.customStatus,
+  );
+  const mapping = getConductAttendanceStatusMapping(
+    record.status,
+    record.customStatus,
+  );
+
+  if (mapping) {
+    return {
+      reason: mapping.reason,
+      remarks: mapping.includeStatusAsRemarks ? statusLabel : undefined,
+    };
+  }
+
+  return {
+    reason: "Other",
+    remarks: statusLabel,
+  };
 }
 
 function validateConductDate(value: string) {
@@ -254,7 +295,9 @@ async function getActiveParadeStateRecordsForDay(
   ]);
 
   return [...permanentRecords, ...datedRecords].filter(
-    (record) => record.affectParadeState && record.startDay <= targetDay,
+    (record) =>
+      record.startDay <= targetDay &&
+      shouldTrackParadeStateRecordForConductAttendance(record),
   );
 }
 
@@ -667,51 +710,17 @@ export const autoMarkConductAttendanceFromParadeState = mutation({
         continue;
       }
 
-      const normalizedStatus = normalizeText(primaryRecord.status).toUpperCase();
-
-      if (normalizedStatus === "MC") {
-        attendanceEntries.push({
-          personnelKey: person.personnelKey,
-          rank: person.rank,
-          name: person.name,
-          platoon: person.platoon,
-          reason: "MC",
-        });
-        continue;
-      }
-
-      if (normalizedStatus === "LEAVE") {
-        attendanceEntries.push({
-          personnelKey: person.personnelKey,
-          rank: person.rank,
-          name: person.name,
-          platoon: person.platoon,
-          reason: "Leave",
-        });
-        continue;
-      }
-
-      if (normalizedStatus === "OFF" || normalizedStatus === "BOOKED OUT") {
-        attendanceEntries.push({
-          personnelKey: person.personnelKey,
-          rank: person.rank,
-          name: person.name,
-          platoon: person.platoon,
-          reason: "Off",
-        });
-        continue;
-      }
+      const mappedAttendance = mapParadeStateRecordToConductAttendance(
+        primaryRecord,
+      );
 
       attendanceEntries.push({
         personnelKey: person.personnelKey,
         rank: person.rank,
         name: person.name,
         platoon: person.platoon,
-        reason: "Other",
-        remarks: formatParadeStateStatusLabel(
-          primaryRecord.status,
-          primaryRecord.customStatus,
-        ),
+        reason: mappedAttendance.reason,
+        remarks: mappedAttendance.remarks,
       });
     }
 

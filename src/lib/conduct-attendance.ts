@@ -27,6 +27,49 @@ export function normalizeAttendanceComparableText(value: string) {
   return value.trim().replace(/\s+/g, " ").toUpperCase();
 }
 
+type ConductAttendanceStatusMapping = {
+  reason: ConductNonPresentReason;
+  includeStatusAsRemarks?: boolean;
+};
+
+// Add or change parade-state status mappings for conduct attendance here.
+export const CONDUCT_ATTENDANCE_STATUS_MAPPINGS: Record<
+  string,
+  ConductAttendanceStatusMapping
+> = {
+  MC: { reason: "MC" },
+  LEAVE: { reason: "Leave" },
+  OFF: { reason: "Off" },
+  "BOOKED OUT": { reason: "Other", includeStatusAsRemarks: true },
+  LD: { reason: "Fall Out", includeStatusAsRemarks: true },
+  RMJ: { reason: "Fall Out", includeStatusAsRemarks: true },
+  "EX RMJ": { reason: "Fall Out", includeStatusAsRemarks: true },
+};
+
+export function getConductAttendanceStatusMapping(
+  status: string,
+  customStatus?: string,
+) {
+  const statusMapping =
+    CONDUCT_ATTENDANCE_STATUS_MAPPINGS[
+      normalizeAttendanceComparableText(status)
+    ];
+
+  if (statusMapping) {
+    return statusMapping;
+  }
+
+  const normalizedCustomStatus = customStatus?.trim()
+    ? normalizeAttendanceComparableText(customStatus)
+    : "";
+
+  if (!normalizedCustomStatus) {
+    return null;
+  }
+
+  return CONDUCT_ATTENDANCE_STATUS_MAPPINGS[normalizedCustomStatus] ?? null;
+}
+
 export function normalizeAttendanceName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
