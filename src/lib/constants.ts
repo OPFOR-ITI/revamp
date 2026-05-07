@@ -171,6 +171,7 @@ export const USER_ROLE_VALUES = ["admin", "operator", "dutyAdmin"] as const;
 export type UserRole = (typeof USER_ROLE_VALUES)[number];
 
 export const APP_USER_PLATOON_VALUES = [
+  "Coy HQ",
   "Platoon 1",
   "Platoon 2",
   "Platoon 3",
@@ -180,6 +181,7 @@ export const APP_USER_PLATOON_VALUES = [
 export type AppUserPlatoon = (typeof APP_USER_PLATOON_VALUES)[number];
 
 export const APP_USER_PLATOON_LABELS: Record<AppUserPlatoon, string> = {
+  "Coy HQ": "Coy HQ",
   "Platoon 1": "1",
   "Platoon 2": "2",
   "Platoon 3": "3",

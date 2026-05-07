@@ -15,6 +15,7 @@ export default defineSchema({
     name: v.string(),
     platoon: v.optional(
       v.union(
+        v.literal("Coy HQ"),
         v.literal("Platoon 1"),
         v.literal("Platoon 2"),
         v.literal("Platoon 3"),

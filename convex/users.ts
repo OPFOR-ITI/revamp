@@ -66,6 +66,7 @@ export const syncCurrentUser = mutation({
         v.literal(APP_USER_PLATOON_VALUES[2]),
         v.literal(APP_USER_PLATOON_VALUES[3]),
         v.literal(APP_USER_PLATOON_VALUES[4]),
+        v.literal(APP_USER_PLATOON_VALUES[5]),
       ),
     ),
   },
