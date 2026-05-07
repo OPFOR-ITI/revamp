@@ -1,6 +1,7 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
+import type { AppUserPlatoon } from "@/lib/constants";
 
 const RETRY_DELAYS_MS = [100, 250, 500, 1000];
 
@@ -9,7 +10,8 @@ function wait(delayMs: number) {
 }
 
 export async function syncCurrentUserAfterAuth<T>(
-  syncCurrentUser: (args: Record<string, never>) => Promise<T>,
+  syncCurrentUser: (args: { platoon?: AppUserPlatoon }) => Promise<T>,
+  args: { platoon?: AppUserPlatoon } = {},
 ) {
   await authClient.getSession();
 
@@ -24,7 +26,7 @@ export async function syncCurrentUserAfterAuth<T>(
 
     if (tokenResult.data?.token) {
       try {
-        return await syncCurrentUser({});
+        return await syncCurrentUser(args);
       } catch (error) {
         lastError = error;
       }

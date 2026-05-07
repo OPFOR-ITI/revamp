@@ -13,6 +13,15 @@ export default defineSchema({
     authUserId: v.string(),
     email: v.string(),
     name: v.string(),
+    platoon: v.optional(
+      v.union(
+        v.literal("Platoon 1"),
+        v.literal("Platoon 2"),
+        v.literal("Platoon 3"),
+        v.literal("Mobile Platoon"),
+        v.literal("Shark Platoon"),
+      ),
+    ),
     roles: v.array(
       v.union(
         v.literal("admin"),

@@ -141,6 +141,7 @@ import {
   isOtherStatus,
   isPermanentRecord,
   shouldShowOutOfCampToggle,
+  type AppUserPlatoon,
   type Status,
   type UserRole,
 } from "@/lib/constants";
@@ -439,6 +440,12 @@ function getViewerInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
+}
+
+function getViewerDefaultPlatoon(
+  viewer: { name: string; email: string; platoon?: AppUserPlatoon },
+) {
+  return viewer.platoon ?? null;
 }
 
 function getDaysOffsetInputValue(startDate: string, endDate?: string) {
@@ -1620,6 +1627,7 @@ export function OperationsDashboard({
   viewer: {
     name: string;
     email: string;
+    platoon?: AppUserPlatoon;
     roles: UserRole[];
   };
 }) {
@@ -1640,8 +1648,15 @@ export function OperationsDashboard({
     useState<ParadeStateRecordDoc | null>(null);
   const [recordForEndDateAdjust, setRecordForEndDateAdjust] =
     useState<ParadeStateRecordDoc | null>(null);
-  const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
+  const [currentStateSearch, setCurrentStateSearch] = useState("");
+  const deferredCurrentStateSearch = useDeferredValue(
+    currentStateSearch.trim().toLowerCase(),
+  );
+  const [recordSearch, setRecordSearch] = useState("");
+  const deferredRecordSearch = useDeferredValue(recordSearch.trim().toLowerCase());
+  const [currentStatePlatoonFilter, setCurrentStatePlatoonFilter] = useState("all");
+  const [hasInitializedCurrentStatePlatoonFilter, setHasInitializedCurrentStatePlatoonFilter] =
+    useState(false);
   const [statusFilter, setStatusFilter] = useState<Status[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [platoonFilter, setPlatoonFilter] = useState("all");
@@ -1705,6 +1720,21 @@ export function OperationsDashboard({
     };
   }, [personnelRefreshKey]);
 
+  useEffect(() => {
+    if (hasInitializedCurrentStatePlatoonFilter || isPersonnelLoading) {
+      return;
+    }
+
+    const viewerPlatoon = getViewerDefaultPlatoon(viewer);
+    setCurrentStatePlatoonFilter(viewerPlatoon ?? "all");
+    setHasInitializedCurrentStatePlatoonFilter(true);
+  }, [
+    hasInitializedCurrentStatePlatoonFilter,
+    isPersonnelLoading,
+    personnel,
+    viewer,
+  ]);
+
   async function handleRefreshPersonnel() {
     setPersonnelRefreshKey((value) => value + 1);
   }
@@ -1733,6 +1763,9 @@ export function OperationsDashboard({
     : null;
   const selectedRecord =
     recordDialogState?.mode === "edit" ? recordDialogState.record : null;
+  const currentStatePlatoonOptions = Array.from(
+    new Set(currentState.map((row) => row.platoon)),
+  ).sort((left, right) => left.localeCompare(right));
   const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
     (left, right) => left.localeCompare(right),
   );
@@ -1762,6 +1795,29 @@ export function OperationsDashboard({
     );
   }
 
+  const filteredCurrentState = currentState.filter((row) => {
+    const matchesPlatoon =
+      currentStatePlatoonFilter === "all"
+        ? true
+        : row.platoon === currentStatePlatoonFilter;
+    const matchesSearch = deferredCurrentStateSearch
+      ? [
+          row.rank,
+          row.name,
+          row.platoon,
+          formatDesignation(row.designation),
+          ...row.activeStatuses.map((status) =>
+            formatStatusLabel(status.status, status.customStatus),
+          ),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(deferredCurrentStateSearch)
+      : true;
+
+    return matchesPlatoon && matchesSearch;
+  });
+
   const filteredRecords = records.filter((record) => {
     const matchesStatus = !hasStatusFilter || statusFilter.includes(record.status);
     const matchesPlatoon =
@@ -1775,10 +1831,10 @@ export function OperationsDashboard({
     const matchesDateRange =
       (recordFilterEndDay === undefined || record.startDay <= recordFilterEndDay) &&
       (record.endDay === undefined || record.endDay >= recordFilterStartDay);
-    const matchesSearch = deferredSearch
+    const matchesSearch = deferredRecordSearch
       ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)} ${formatStatusLabel(record.status, record.customStatus)}`
           .toLowerCase()
-          .includes(deferredSearch)
+          .includes(deferredRecordSearch)
       : true;
 
     return (
@@ -1792,7 +1848,18 @@ export function OperationsDashboard({
 
   const activeViewTitle =
     activeView === "current-state" ? "Current State" : "Record Log";
-  const hasRecordSearch = search.trim().length > 0;
+  const currentStatePlatoonFilterLabel =
+    currentStatePlatoonFilter === "all"
+      ? "All Platoons"
+      : currentStatePlatoonFilter;
+  const hasCurrentStateSearch = currentStateSearch.trim().length > 0;
+  const hasActiveCurrentStateFilters =
+    hasCurrentStateSearch || currentStatePlatoonFilter !== "all";
+  const activeCurrentStateFilterCount = [
+    hasCurrentStateSearch,
+    currentStatePlatoonFilter !== "all",
+  ].filter(Boolean).length;
+  const hasRecordSearch = recordSearch.trim().length > 0;
   const hasCustomDateRange =
     recordFilterFromDate !== todayDate || recordFilterToDate !== "";
   const hasActiveRecordFilters =
@@ -1821,12 +1888,17 @@ export function OperationsDashboard({
   }
 
   function clearRecordFilters() {
-    setSearch("");
+    setRecordSearch("");
     setStatusFilter([]);
     setPlatoonFilter("all");
     setImpactFilter("all");
     setRecordFilterFromDate(todayDate);
     setRecordFilterToDate("");
+  }
+
+  function clearCurrentStateFilters() {
+    setCurrentStateSearch("");
+    setCurrentStatePlatoonFilter("all");
   }
 
   return (
@@ -2030,16 +2102,88 @@ export function OperationsDashboard({
                     Table of Servicemen with all his currently active statuses.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="pt-[-8]">
+                <CardContent className="space-y-4 pt-0">
+                  <div className="rounded-2xl border border-emerald-950/10 bg-background/85 p-3 shadow-sm shadow-emerald-950/5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-emerald-950/10 bg-white/80 px-2.5 text-xs font-medium text-zinc-700">
+                          <SlidersHorizontal className="size-3.5" />
+                          Filters
+                        </div>
+                        {hasActiveCurrentStateFilters ? (
+                          <Badge
+                            variant="outline"
+                            className="h-8 shrink-0 border-amber-300 bg-amber-50 px-2.5 text-amber-900"
+                          >
+                            {activeCurrentStateFilterCount} active
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      {hasActiveCurrentStateFilters ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearCurrentStateFilters}
+                          className="h-8 shrink-0 px-2 text-xs text-zinc-600 hover:text-zinc-950"
+                        >
+                          <X className="size-3.5" />
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2 xl:flex-nowrap">
+                      <div className="relative min-w-[10rem] flex-1 xl:w-full">
+                        <Label htmlFor="current-state-search" className="sr-only">
+                          Search current state
+                        </Label>
+                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          id="current-state-search"
+                          placeholder="Search serviceman, platoon, designation, or status"
+                          value={currentStateSearch}
+                          onChange={(event) => setCurrentStateSearch(event.target.value)}
+                          className="h-8 rounded-md border-emerald-950/10 bg-white pl-9"
+                        />
+                      </div>
+
+                      <div className="min-w-[10rem] md:hidden">
+                        <Label className="sr-only">Current state platoon</Label>
+                        <Select
+                          value={currentStatePlatoonFilter}
+                          onValueChange={(value) =>
+                            setCurrentStatePlatoonFilter(value ?? "all")
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-full rounded-md border-emerald-950/10 bg-white">
+                            <span className="truncate">
+                              {currentStatePlatoonFilterLabel}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Platoons</SelectItem>
+                            {currentStatePlatoonOptions.map((platoon) => (
+                              <SelectItem key={platoon} value={platoon}>
+                                {platoon}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
                   {currentStateQuery === undefined ? (
                     <div className="space-y-3">
                       <Skeleton className="h-12 w-full rounded-xl" />
                       <Skeleton className="h-12 w-full rounded-xl" />
                       <Skeleton className="h-12 w-full rounded-xl" />
                     </div>
-                  ) : currentState.length ? (
+                  ) : filteredCurrentState.length ? (
                     <div className="space-y-3">
-                      {currentState.map((row) => (
+                      {filteredCurrentState.map((row) => (
                         <CurrentStateMobileCard
                           key={`${row.personnelKey}-mobile`}
                           row={row}
@@ -2052,7 +2196,30 @@ export function OperationsDashboard({
                           <TableHeader>
                             <TableRow>
                               <TableHead>Serviceman</TableHead>
-                              <TableHead>Platoon</TableHead>
+                              <TableHead>
+                                <div className="flex">
+                                  <Select
+                                    value={currentStatePlatoonFilter}
+                                    onValueChange={(value) =>
+                                      setCurrentStatePlatoonFilter(value ?? "all")
+                                    }
+                                  >
+                                    <SelectTrigger className="h-8 min-w-[10rem] rounded-md border-emerald-950/10 bg-white text-xs font-normal">
+                                      <span className="truncate">
+                                        {currentStatePlatoonFilterLabel}
+                                      </span>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All Platoons</SelectItem>
+                                      {currentStatePlatoonOptions.map((platoon) => (
+                                        <SelectItem key={platoon} value={platoon}>
+                                          {platoon}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </TableHead>
                               <TableHead>Designation</TableHead>
                               <TableHead>Active statuses</TableHead>
                               <TableHead>In/Out Camp</TableHead>
@@ -2061,7 +2228,7 @@ export function OperationsDashboard({
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {currentState.map((row) => (
+                            {filteredCurrentState.map((row) => (
                               <TableRow key={row.personnelKey}>
                                 <TableCell>
                                   <div className="min-w-44">
@@ -2125,7 +2292,9 @@ export function OperationsDashboard({
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                      No active parade-state records today.
+                      {currentState.length
+                        ? "No current-state rows match the active filters."
+                        : "No active parade-state records today."}
                     </div>
                   )}
                 </CardContent>
@@ -2179,8 +2348,8 @@ export function OperationsDashboard({
                         <Input
                           id="record-search"
                           placeholder="Search"
-                          value={search}
-                          onChange={(event) => setSearch(event.target.value)}
+                          value={recordSearch}
+                          onChange={(event) => setRecordSearch(event.target.value)}
                           className="h-8 rounded-md border-emerald-950/10 bg-white pl-9"
                         />
                       </div>

@@ -13,6 +13,11 @@ import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import { AuthShell } from "@/components/auth/auth-shell";
 import {
+  APP_USER_PLATOON_VALUES,
+  getAppUserPlatoonLabel,
+  type AppUserPlatoon,
+} from "@/lib/constants";
+import {
   Form,
   FormControl,
   FormDescription,
@@ -22,6 +27,13 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { authClient } from "@/lib/auth-client";
 import { syncCurrentUserAfterAuth } from "@/lib/auth-sync";
 
@@ -31,6 +43,7 @@ const signUpSchema = z.object({
     .trim()
     .min(2, "Name must be at least 2 characters.")
     .max(80, "Name must be 80 characters or fewer."),
+  platoon: z.enum(APP_USER_PLATOON_VALUES, "Select your platoon."),
   email: z.email("Enter a valid email address."),
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
@@ -46,6 +59,7 @@ export function SignUpForm() {
     resolver: zodResolver(signUpSchema),
     defaultValues: {
       name: "",
+      platoon: undefined,
       email: "",
       password: "",
     },
@@ -67,7 +81,9 @@ export function SignUpForm() {
         return;
       }
 
-      await syncCurrentUserAfterAuth(syncCurrentUser);
+      await syncCurrentUserAfterAuth(syncCurrentUser, {
+        platoon: values.platoon,
+      });
       toast.success("Account created. Waiting for admin approval.");
       router.replace("/pending-approval");
       router.refresh();
@@ -113,6 +129,36 @@ export function SignUpForm() {
               />
             </FormControl>
             <FormMessage>{form.formState.errors.email?.message}</FormMessage>
+          </FormItem>
+
+          <FormItem>
+            <FormLabel htmlFor="platoon">Platoon</FormLabel>
+            <Select
+              value={form.watch("platoon")}
+              onValueChange={(value) =>
+                form.setValue("platoon", value as AppUserPlatoon, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+            >
+              <FormControl>
+                <SelectTrigger id="platoon">
+                  <SelectValue placeholder="Select your platoon" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {APP_USER_PLATOON_VALUES.map((platoon) => (
+                  <SelectItem key={platoon} value={platoon}>
+                    {getAppUserPlatoonLabel(platoon)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormDescription>
+              This sets your default operating scope after approval.
+            </FormDescription>
+            <FormMessage>{form.formState.errors.platoon?.message}</FormMessage>
           </FormItem>
 
           <FormItem>

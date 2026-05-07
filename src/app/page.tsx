@@ -18,6 +18,7 @@ export default async function HomePage({
       viewer={{
         name: user.name,
         email: user.email,
+        platoon: user.platoon,
         roles: user.roles,
       }}
     />

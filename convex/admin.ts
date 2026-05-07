@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
 import { normalizeAppUser, ensureCurrentUser } from "./users";
+import { APP_USER_PLATOON_VALUES } from "../src/lib/constants";
 
 const userRoleValidator = v.union(
   v.literal("admin"),
@@ -13,6 +14,14 @@ const approvalStatusValidator = v.union(
   v.literal("pending"),
   v.literal("approved"),
   v.literal("rejected"),
+);
+
+const appUserPlatoonValidator = v.union(
+  v.literal(APP_USER_PLATOON_VALUES[0]),
+  v.literal(APP_USER_PLATOON_VALUES[1]),
+  v.literal(APP_USER_PLATOON_VALUES[2]),
+  v.literal(APP_USER_PLATOON_VALUES[3]),
+  v.literal(APP_USER_PLATOON_VALUES[4]),
 );
 
 function getApprovalSortWeight(approvalStatus: "pending" | "approved" | "rejected") {
@@ -63,6 +72,7 @@ export const updateUserAccess = mutation({
     appUserId: v.id("appUsers"),
     roles: v.array(userRoleValidator),
     approvalStatus: approvalStatusValidator,
+    platoon: appUserPlatoonValidator,
   },
   handler: async (ctx, args) => {
     const { appUser: actingUser } = await ensureCurrentUser(ctx, {
@@ -85,6 +95,7 @@ export const updateUserAccess = mutation({
 
     const now = Date.now();
     await ctx.db.patch(args.appUserId, {
+      platoon: args.platoon,
       roles: args.roles,
       approvalStatus: args.approvalStatus,
       approvedAt:

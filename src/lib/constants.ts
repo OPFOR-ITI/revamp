@@ -168,6 +168,27 @@ export function isPermanentRecord(record: {
 export const USER_ROLE_VALUES = ["admin", "operator", "dutyAdmin"] as const;
 export type UserRole = (typeof USER_ROLE_VALUES)[number];
 
+export const APP_USER_PLATOON_VALUES = [
+  "Platoon 1",
+  "Platoon 2",
+  "Platoon 3",
+  "Mobile Platoon",
+  "Shark Platoon",
+] as const;
+export type AppUserPlatoon = (typeof APP_USER_PLATOON_VALUES)[number];
+
+export const APP_USER_PLATOON_LABELS: Record<AppUserPlatoon, string> = {
+  "Platoon 1": "1",
+  "Platoon 2": "2",
+  "Platoon 3": "3",
+  "Mobile Platoon": "MOBILE",
+  "Shark Platoon": "SHARK",
+};
+
+export function getAppUserPlatoonLabel(platoon: AppUserPlatoon) {
+  return APP_USER_PLATOON_LABELS[platoon];
+}
+
 export const APPROVAL_STATUS_VALUES = [
   "pending",
   "approved",

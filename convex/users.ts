@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { v } from "convex/values";
 import type {
   MutationCtx,
   QueryCtx,
@@ -6,6 +7,7 @@ import type {
 import { mutation, query } from "./_generated/server";
 import type { AppPermission } from "../src/lib/access-control";
 import { hasPermission, resolveUserRoles } from "../src/lib/access-control";
+import { APP_USER_PLATOON_VALUES } from "../src/lib/constants";
 
 import { authComponent } from "./auth";
 
@@ -56,8 +58,18 @@ export async function ensureCurrentUser(
 }
 
 export const syncCurrentUser = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    platoon: v.optional(
+      v.union(
+        v.literal(APP_USER_PLATOON_VALUES[0]),
+        v.literal(APP_USER_PLATOON_VALUES[1]),
+        v.literal(APP_USER_PLATOON_VALUES[2]),
+        v.literal(APP_USER_PLATOON_VALUES[3]),
+        v.literal(APP_USER_PLATOON_VALUES[4]),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
     const authUser = await authComponent.getAuthUser(ctx);
     const now = Date.now();
     const existing = await ctx.db
@@ -72,6 +84,7 @@ export const syncCurrentUser = mutation({
       await ctx.db.patch(existing._id, {
         name,
         email,
+        platoon: args.platoon ?? existing.platoon,
         updatedAt: now,
       });
 
@@ -79,6 +92,7 @@ export const syncCurrentUser = mutation({
         ...existing,
         name,
         email,
+        platoon: args.platoon ?? existing.platoon,
         updatedAt: now,
       };
     }
@@ -87,6 +101,7 @@ export const syncCurrentUser = mutation({
       authUserId: authUser._id,
       email,
       name,
+      platoon: args.platoon,
       roles: ["operator"],
       approvalStatus: "pending",
       createdAt: now,

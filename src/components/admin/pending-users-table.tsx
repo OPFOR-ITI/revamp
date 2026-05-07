@@ -28,18 +28,29 @@ import {
 } from "@/components/ui/table";
 import { getUserRoleLabel } from "@/lib/access-control";
 import {
+  APP_USER_PLATOON_VALUES,
   APPROVAL_STATUS_VALUES,
   USER_ROLE_VALUES,
+  getAppUserPlatoonLabel,
+  type AppUserPlatoon,
   type ApprovalStatus,
   type UserRole,
 } from "@/lib/constants";
 import { formatTimestampLabel } from "@/lib/date";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ManagedUser = {
   _id: Id<"appUsers">;
   name: string;
   email: string;
+  platoon?: AppUserPlatoon;
   roles: UserRole[];
   approvalStatus: ApprovalStatus;
   createdAt: number;
@@ -116,6 +127,17 @@ function UserRolesList({ roles }: { roles: UserRole[] }) {
   );
 }
 
+function PlatoonBadge({ platoon }: { platoon?: AppUserPlatoon }) {
+  return (
+    <Badge
+      variant="outline"
+      className="border-emerald-950/10 bg-white/80 text-zinc-700"
+    >
+      {platoon ? getAppUserPlatoonLabel(platoon) : "Unassigned"}
+    </Badge>
+  );
+}
+
 function SummaryChip({
   label,
   value,
@@ -153,6 +175,9 @@ function UserManagementDialog({
   const [approvalStatus, setApprovalStatus] = useState<ApprovalStatus>(
     user?.approvalStatus ?? "pending",
   );
+  const [platoon, setPlatoon] = useState<AppUserPlatoon | "">(
+    user?.platoon ?? "",
+  );
   const [roles, setRoles] = useState<UserRole[]>(user?.roles ?? []);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -176,12 +201,18 @@ function UserManagementDialog({
       return;
     }
 
+    if (!platoon) {
+      toast.error("Assign a platoon before saving.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
       await updateUserAccess({
         appUserId: user._id,
         approvalStatus,
+        platoon,
         roles,
       });
       toast.success("User access updated.");
@@ -262,6 +293,32 @@ function UserManagementDialog({
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                    Platoon
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    This drives the user&apos;s default platoon scope in operations.
+                  </p>
+                </div>
+                <Select
+                  value={platoon}
+                  onValueChange={(value) => setPlatoon(value as AppUserPlatoon)}
+                >
+                  <SelectTrigger className="w-full border-emerald-950/10 bg-white/85">
+                    <SelectValue placeholder="Select platoon" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {APP_USER_PLATOON_VALUES.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {getAppUserPlatoonLabel(value)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </section>
 
               <section className="space-y-3">
@@ -416,6 +473,9 @@ export function UserManagementTable() {
                       <ApprovalStatusBadge status={user.approvalStatus} />
                     </div>
                     <div className="mt-4">
+                      <PlatoonBadge platoon={user.platoon} />
+                    </div>
+                    <div className="mt-4">
                       <UserRolesList roles={user.roles} />
                     </div>
                     <div className="mt-4 flex items-center justify-between gap-3">
@@ -452,6 +512,9 @@ export function UserManagementTable() {
                         Status
                       </TableHead>
                       <TableHead className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                        Platoon
+                      </TableHead>
+                      <TableHead className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
                         Roles
                       </TableHead>
                       <TableHead className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
@@ -484,6 +547,9 @@ export function UserManagementTable() {
                         </TableCell>
                         <TableCell className="px-4 py-4 align-top">
                           <ApprovalStatusBadge status={user.approvalStatus} />
+                        </TableCell>
+                        <TableCell className="px-4 py-4 align-top">
+                          <PlatoonBadge platoon={user.platoon} />
                         </TableCell>
                         <TableCell className="px-4 py-4 align-top whitespace-normal">
                           <div className="max-w-sm">
