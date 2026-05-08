@@ -1,9 +1,9 @@
 "use client";
 
 import { format, parseISO } from "date-fns";
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -132,6 +132,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DateStepperField } from "@/components/ui/date-stepper-field";
 import {
+  APP_USER_PLATOON_VALUES,
   DUPLICATE_STATUS_RECORD_MESSAGE,
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
@@ -149,7 +150,6 @@ import {
 } from "@/lib/constants";
 import {
   addDaysToDateString,
-  dateStringToDayIndex,
   getDayOffsetBetweenDates,
   formatDateLabel,
   formatTimestampLabel,
@@ -1709,9 +1709,6 @@ export function OperationsDashboard({
 }) {
   const router = useRouter();
   const convex = useConvex();
-  const currentStateQuery =
-    useQuery(api.paradeState.listCurrentState, {}) as CurrentStateRow[] | undefined;
-  const recordLog = useQuery(api.paradeState.listRecordLog, {});
 
   const [personnel, setPersonnel] = useState<PersonnelRecord[]>([]);
   const [personnelError, setPersonnelError] = useState<string | null>(null);
@@ -1730,10 +1727,10 @@ export function OperationsDashboard({
     currentStateSearch.trim().toLowerCase(),
   );
   const [recordSearch, setRecordSearch] = useState("");
-  const deferredRecordSearch = useDeferredValue(recordSearch.trim().toLowerCase());
-  const [currentStatePlatoonFilter, setCurrentStatePlatoonFilter] = useState("all");
-  const [hasInitializedCurrentStatePlatoonFilter, setHasInitializedCurrentStatePlatoonFilter] =
-    useState(false);
+  const [debouncedRecordSearch, setDebouncedRecordSearch] = useState("");
+  const [currentStatePlatoonFilter, setCurrentStatePlatoonFilter] = useState(
+    () => getViewerDefaultPlatoon(viewer) ?? "all",
+  );
   const [statusFilter, setStatusFilter] = useState<Status[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [platoonFilter, setPlatoonFilter] = useState("all");
@@ -1744,6 +1741,80 @@ export function OperationsDashboard({
   const [recordFilterToDate, setRecordFilterToDate] = useState("");
   const [activeView, setActiveView] = useState<DashboardView>(initialView);
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedRecordSearch(recordSearch.trim().toLowerCase());
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [recordSearch]);
+
+  const currentStateArgs = useMemo(
+    () =>
+      activeView !== "current-state"
+        ? "skip"
+        : currentStatePlatoonFilter === "all"
+          ? {}
+          : { platoon: currentStatePlatoonFilter },
+    [activeView, currentStatePlatoonFilter],
+  );
+  const currentStateQuery = useQuery(
+    api.paradeState.listCurrentState,
+    currentStateArgs,
+  ) as CurrentStateRow[] | undefined;
+  const recordLogArgs = useMemo(() => {
+    const args: {
+      search?: string;
+      statuses?: Status[];
+      platoon?: string;
+      impact?: ImpactFilter;
+      fromDate: string;
+      toDate?: string;
+    } = {
+      fromDate: recordFilterFromDate,
+    };
+
+    if (debouncedRecordSearch) {
+      args.search = debouncedRecordSearch;
+    }
+
+    if (statusFilter.length > 0) {
+      args.statuses = statusFilter;
+    }
+
+    if (platoonFilter !== "all") {
+      args.platoon = platoonFilter;
+    }
+
+    if (impactFilter !== "all") {
+      args.impact = impactFilter;
+    }
+
+    if (recordFilterToDate) {
+      args.toDate = recordFilterToDate;
+    }
+
+    return args;
+  }, [
+    debouncedRecordSearch,
+    impactFilter,
+    platoonFilter,
+    recordFilterFromDate,
+    recordFilterToDate,
+    statusFilter,
+  ]);
+  const {
+    results: recordLog,
+    status: recordLogStatus,
+    loadMore: loadMoreRecordLog,
+  } = usePaginatedQuery(
+    api.paradeState.listRecordLog,
+    activeView === "record-log" ? recordLogArgs : "skip",
+    { initialNumItems: 25 },
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1797,21 +1868,6 @@ export function OperationsDashboard({
     };
   }, [personnelRefreshKey]);
 
-  useEffect(() => {
-    if (hasInitializedCurrentStatePlatoonFilter || isPersonnelLoading) {
-      return;
-    }
-
-    const viewerPlatoon = getViewerDefaultPlatoon(viewer);
-    setCurrentStatePlatoonFilter(viewerPlatoon ?? "all");
-    setHasInitializedCurrentStatePlatoonFilter(true);
-  }, [
-    hasInitializedCurrentStatePlatoonFilter,
-    isPersonnelLoading,
-    personnel,
-    viewer,
-  ]);
-
   async function handleRefreshPersonnel() {
     setPersonnelRefreshKey((value) => value + 1);
   }
@@ -1831,21 +1887,12 @@ export function OperationsDashboard({
   const currentState = currentStateQuery ?? [];
   const records = recordLog ?? [];
   const todayDate = getTodaySingaporeDateString();
-  const recordFilterStartDay = dateStringToDayIndex(recordFilterFromDate);
-  const recordFilterEndDay = recordFilterToDate
-    ? dateStringToDayIndex(recordFilterToDate)
-    : undefined;
   const rowForSelectedPersonnel = selectedRow
     ? currentState.find((row) => row.personnelKey === selectedRow.personnelKey) ?? selectedRow
     : null;
   const selectedRecord =
     recordDialogState?.mode === "edit" ? recordDialogState.record : null;
-  const currentStatePlatoonOptions = Array.from(
-    new Set(currentState.map((row) => row.platoon)),
-  ).sort((left, right) => left.localeCompare(right));
-  const platoonOptions = Array.from(new Set(records.map((record) => record.platoon))).sort(
-    (left, right) => left.localeCompare(right),
-  );
+  const platoonOptions = [...APP_USER_PLATOON_VALUES];
   const hasStatusFilter = statusFilter.length > 0;
   const statusFilterLabel =
     statusFilter.length === 0
@@ -1906,34 +1953,6 @@ export function OperationsDashboard({
     return matchesPlatoon && matchesSearch;
   });
 
-  const filteredRecords = records.filter((record) => {
-    const matchesStatus = !hasStatusFilter || statusFilter.includes(record.status);
-    const matchesPlatoon =
-      platoonFilter === "all" ? true : record.platoon === platoonFilter;
-    const matchesImpact =
-      impactFilter === "all"
-        ? true
-        : impactFilter === "impact"
-          ? record.affectParadeState
-          : !record.affectParadeState;
-    const matchesDateRange =
-      (recordFilterEndDay === undefined || record.startDay <= recordFilterEndDay) &&
-      (record.endDay === undefined || record.endDay >= recordFilterStartDay);
-    const matchesSearch = deferredRecordSearch
-      ? `${record.rank} ${record.name} ${record.platoon} ${formatDesignation(record.designation)} ${formatStatusLabel(record.status, record.customStatus)}`
-          .toLowerCase()
-          .includes(deferredRecordSearch)
-      : true;
-
-    return (
-      matchesStatus &&
-      matchesPlatoon &&
-      matchesImpact &&
-      matchesDateRange &&
-      matchesSearch
-    );
-  });
-
   const activeViewTitle =
     activeView === "current-state" ? "Current State" : "Record Log";
   const currentStatePlatoonFilterLabel =
@@ -1966,6 +1985,9 @@ export function OperationsDashboard({
   const nominalRollCount =
     isPersonnelLoading && !personnel.length ? "--" : String(personnel.length);
   const viewerInitials = getViewerInitials(viewer.name);
+  const isRecordLogLoading = recordLogStatus === "LoadingFirstPage";
+  const isRecordLogLoadingMore = recordLogStatus === "LoadingMore";
+  const canLoadMoreRecordLog = recordLogStatus === "CanLoadMore";
 
   function handleRecordFilterFromDateChange(nextValue: string) {
     setRecordFilterFromDate(nextValue);
@@ -2252,7 +2274,7 @@ export function OperationsDashboard({
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Platoons</SelectItem>
-                            {currentStatePlatoonOptions.map((platoon) => (
+                            {platoonOptions.map((platoon) => (
                               <SelectItem key={platoon} value={platoon}>
                                 {platoon}
                               </SelectItem>
@@ -2299,7 +2321,7 @@ export function OperationsDashboard({
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="all">All Platoons</SelectItem>
-                                      {currentStatePlatoonOptions.map((platoon) => (
+                                      {platoonOptions.map((platoon) => (
                                         <SelectItem key={platoon} value={platoon}>
                                           {platoon}
                                         </SelectItem>
@@ -2330,8 +2352,8 @@ export function OperationsDashboard({
                                       </span>
                                     </p>
                                     <p className="text-xs text-muted-foreground">
-                                      {row.records.length} active record
-                                      {row.records.length === 1 ? "" : "s"}
+                                      {row.activeRecordCount} active record
+                                      {row.activeRecordCount === 1 ? "" : "s"}
                                     </p>
                                   </div>
                                 </TableCell>
@@ -2377,6 +2399,7 @@ export function OperationsDashboard({
                           </TableBody>
                         </Table>
                       </div>
+
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -2553,15 +2576,15 @@ export function OperationsDashboard({
                     </div>
                   </div>
 
-                  {recordLog === undefined ? (
+                  {isRecordLogLoading ? (
                     <div className="space-y-3">
                       <Skeleton className="h-12 w-full rounded-xl" />
                       <Skeleton className="h-12 w-full rounded-xl" />
                       <Skeleton className="h-12 w-full rounded-xl" />
                     </div>
-                  ) : filteredRecords.length ? (
+                  ) : records.length ? (
                     <div className="space-y-3">
-                      {filteredRecords.map((record) => (
+                      {records.map((record) => (
                         <RecordLogMobileCard
                           key={`${record._id}-mobile`}
                           record={record}
@@ -2585,7 +2608,7 @@ export function OperationsDashboard({
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {filteredRecords.map((record) => (
+                            {records.map((record) => (
                               <TableRow key={record._id}>
                                 <TableCell>
                                   <div className="min-w-52">
@@ -2643,6 +2666,22 @@ export function OperationsDashboard({
                           </TableBody>
                         </Table>
                       </div>
+
+                      {canLoadMoreRecordLog ? (
+                        <div className="flex justify-center pt-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => loadMoreRecordLog(25)}
+                            disabled={isRecordLogLoadingMore}
+                          >
+                            {isRecordLogLoadingMore ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : null}
+                            Load more
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">

@@ -18,5 +18,4 @@ export type CurrentStateRow = {
   activeStatuses: ActiveStatusSummary[];
   activeRecordCount: number;
   hasParadeStateImpact: boolean;
-  records: ParadeStateRecordDoc[];
 };

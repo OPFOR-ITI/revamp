@@ -60,6 +60,7 @@ export default defineSchema({
     startDay: v.number(),
     endDay: v.optional(v.number()),
     remarks: v.optional(v.string()),
+    searchText: v.optional(v.string()),
     submittedByName: v.string(),
     submittedByEmail: v.string(),
     submittedByAuthUserId: v.string(),
@@ -70,7 +71,19 @@ export default defineSchema({
     .index("by_isPermanent", ["isPermanent"])
     .index("by_endDay", ["endDay"])
     .index("by_createdAt", ["createdAt"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_platoon_and_isPermanent", ["platoon", "isPermanent"])
+    .index("by_platoon_and_endDay", ["platoon", "endDay"])
+    .index("by_platoon_and_createdAt", ["platoon", "createdAt"])
+    .index("by_status_and_createdAt", ["status", "createdAt"])
+    .index("by_affectParadeState_and_createdAt", [
+      "affectParadeState",
+      "createdAt",
+    ])
+    .searchIndex("search_recordLog", {
+      searchField: "searchText",
+      filterFields: ["platoon", "status", "affectParadeState"],
+    }),
 
   paradeStateSnapshots: defineTable({
     snapshotDate: v.string(),

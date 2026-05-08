@@ -1,9 +1,11 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import {
   DUPLICATE_STATUS_RECORD_MESSAGE,
   MAX_CUSTOM_STATUS_LENGTH,
   MAX_REMARKS_LENGTH,
+  formatStatusLabel,
   getStatusRecordPeriodConfig,
   doesStatusAffectParadeState,
   isOtherStatus,
@@ -19,7 +21,7 @@ import {
 } from "../src/lib/date";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import {
   paradeStateSnapshotDutyAssignmentValidator,
   paradeStateSnapshotPersonnelValidator,
@@ -168,6 +170,27 @@ function withDerivedImpact<
       record.affectParadeState,
     ),
   };
+}
+
+function buildRecordSearchText(record: {
+  rank: string;
+  name: string;
+  platoon: string;
+  designation: string;
+  status: Status;
+  customStatus?: string;
+}) {
+  return [
+    record.rank,
+    record.name,
+    record.platoon,
+    record.designation,
+    formatStatusLabel(record.status, record.customStatus),
+    record.customStatus,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 async function ensureNoDuplicateRecord(
@@ -360,6 +383,14 @@ export const createRecord = mutation({
     }
 
     const personnelKey = normalizeText(args.personnelKey);
+    const rank = normalizeText(args.rank);
+    const name = normalizeText(args.name);
+    const platoon = normalizeText(args.platoon);
+    const designation = normalizeText(args.designation);
+    const affectParadeState = resolveParadeStateImpact(
+      args.status,
+      args.affectParadeState,
+    );
     await ensureNoDuplicateRecord(ctx, {
       personnelKey,
       status: args.status,
@@ -371,22 +402,27 @@ export const createRecord = mutation({
 
     return await ctx.db.insert("paradeStateRecords", {
       personnelKey,
-      rank: normalizeText(args.rank),
-      name: normalizeText(args.name),
-      platoon: normalizeText(args.platoon),
-      designation: normalizeText(args.designation),
+      rank,
+      name,
+      platoon,
+      designation,
       status: args.status,
       customStatus,
       isPermanent,
-      affectParadeState: resolveParadeStateImpact(
-        args.status,
-        args.affectParadeState,
-      ),
+      affectParadeState,
       startDate: args.startDate,
       endDate,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
+      searchText: buildRecordSearchText({
+        rank,
+        name,
+        platoon,
+        designation,
+        status: args.status,
+        customStatus,
+      }),
       submittedByName: authUser.name?.trim() || appUser.name,
       submittedByEmail: authUser.email,
       submittedByAuthUserId: appUser.authUserId,
@@ -430,19 +466,29 @@ export const updateRecord = mutation({
       throw new ConvexError("Enter the custom status for Others.");
     }
 
+    const affectParadeState = resolveParadeStateImpact(
+      args.status,
+      args.affectParadeState,
+    );
+
     await ctx.db.patch(args.recordId, {
       status: args.status,
       customStatus,
       isPermanent,
-      affectParadeState: resolveParadeStateImpact(
-        args.status,
-        args.affectParadeState,
-      ),
+      affectParadeState,
       startDate: args.startDate,
       endDate,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
+      searchText: buildRecordSearchText({
+        rank: existing.rank,
+        name: existing.name,
+        platoon: existing.platoon,
+        designation: existing.designation,
+        status: args.status,
+        customStatus,
+      }),
       updatedAt: Date.now(),
     });
   },
@@ -503,22 +549,38 @@ export const deleteRecord = mutation({
 });
 
 export const listCurrentState = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    platoon: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     await ensureCurrentUser(ctx, {
       requireApproved: true,
       requirePermission: "statusRecords.manage",
     });
 
     const todayDay = getTodaySingaporeDayIndex();
-    const permanentRecords = await ctx.db
-      .query("paradeStateRecords")
-      .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
-      .collect();
-    const datedRecords = await ctx.db
-      .query("paradeStateRecords")
-      .withIndex("by_endDay", (q) => q.gte("endDay", todayDay))
-      .collect();
+    const permanentRecords = args.platoon
+      ? await ctx.db
+          .query("paradeStateRecords")
+          .withIndex("by_platoon_and_isPermanent", (q) =>
+            q.eq("platoon", args.platoon!).eq("isPermanent", true),
+          )
+          .collect()
+      : await ctx.db
+          .query("paradeStateRecords")
+          .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
+          .collect();
+    const datedRecords = args.platoon
+      ? await ctx.db
+          .query("paradeStateRecords")
+          .withIndex("by_platoon_and_endDay", (q) =>
+            q.eq("platoon", args.platoon!).gte("endDay", todayDay),
+          )
+          .collect()
+      : await ctx.db
+          .query("paradeStateRecords")
+          .withIndex("by_endDay", (q) => q.gte("endDay", todayDay))
+          .collect();
 
     const activeRecords = [...permanentRecords, ...datedRecords]
       .map(withDerivedImpact)
@@ -559,7 +621,6 @@ export const listCurrentState = query({
           hasParadeStateImpact: groupRecords.some(
             (record) => record.affectParadeState,
           ),
-          records: groupRecords,
         };
       })
       .sort(sortCurrentStateRows);
@@ -594,20 +655,149 @@ export const listActiveRecordsForDate = query({
 });
 
 export const listRecordLog = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    paginationOpts: paginationOptsValidator,
+    search: v.optional(v.string()),
+    statuses: v.optional(v.array(statusValidator)),
+    platoon: v.optional(v.string()),
+    impact: v.optional(
+      v.union(v.literal("all"), v.literal("impact"), v.literal("no-impact")),
+    ),
+    fromDate: v.string(),
+    toDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
     await ensureCurrentUser(ctx, {
       requireApproved: true,
       requirePermission: "statusRecords.manage",
     });
 
+    const search = args.search?.trim().toLowerCase();
+    const statuses = args.statuses ?? [];
+    const fromDay = dateStringToDayIndex(args.fromDate);
+    const toDay = args.toDate ? dateStringToDayIndex(args.toDate) : undefined;
+    const affectParadeState =
+      args.impact === "impact"
+        ? true
+        : args.impact === "no-impact"
+          ? false
+          : undefined;
+
+    const filteredRecordLogQuery = search
+      ? ctx.db
+          .query("paradeStateRecords")
+          .withSearchIndex("search_recordLog", (q) => {
+            let searchQuery = q.search("searchText", search);
+
+            if (args.platoon) {
+              searchQuery = searchQuery.eq("platoon", args.platoon);
+            }
+
+            if (statuses.length === 1) {
+              searchQuery = searchQuery.eq("status", statuses[0]!);
+            }
+
+            if (affectParadeState !== undefined) {
+              searchQuery = searchQuery.eq(
+                "affectParadeState",
+                affectParadeState,
+              );
+            }
+
+            return searchQuery;
+          })
+      : args.platoon
+        ? ctx.db
+            .query("paradeStateRecords")
+            .withIndex("by_platoon_and_createdAt", (q) =>
+              q.eq("platoon", args.platoon!),
+            )
+            .order("desc")
+        : statuses.length === 1
+          ? ctx.db
+              .query("paradeStateRecords")
+              .withIndex("by_status_and_createdAt", (q) =>
+                q.eq("status", statuses[0]!),
+              )
+              .order("desc")
+          : affectParadeState !== undefined
+            ? ctx.db
+                .query("paradeStateRecords")
+                .withIndex("by_affectParadeState_and_createdAt", (q) =>
+                  q.eq("affectParadeState", affectParadeState),
+                )
+                .order("desc")
+            : ctx.db
+                .query("paradeStateRecords")
+                .withIndex("by_createdAt")
+                .order("desc");
+
+    const records = await filteredRecordLogQuery
+      .filter((q) => {
+        const dateFilter =
+          toDay === undefined
+            ? q.or(
+                q.eq(q.field("isPermanent"), true),
+                q.eq(q.field("endDay"), undefined),
+                q.gte(q.field("endDay"), fromDay),
+              )
+            : q.and(
+                q.lte(q.field("startDay"), toDay),
+                q.or(
+                  q.eq(q.field("isPermanent"), true),
+                  q.eq(q.field("endDay"), undefined),
+                  q.gte(q.field("endDay"), fromDay),
+                ),
+              );
+        const statusFilter =
+          statuses.length === 0
+            ? true
+            : statuses.length === 1
+              ? q.eq(q.field("status"), statuses[0]!)
+              : q.or(
+                  ...statuses.map((status) => q.eq(q.field("status"), status)),
+                );
+        const platoonFilter = args.platoon
+          ? q.eq(q.field("platoon"), args.platoon)
+          : true;
+        const impactFilter =
+          affectParadeState === undefined
+            ? true
+            : q.eq(q.field("affectParadeState"), affectParadeState);
+
+        return q.and(dateFilter, statusFilter, platoonFilter, impactFilter);
+      })
+      .paginate(args.paginationOpts);
+
+    return {
+      ...records,
+      page: records.page.map(withDerivedImpact),
+    };
+  },
+});
+
+export const backfillRecordSearchTextBatch = internalMutation({
+  args: {
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = Math.min(Math.max(args.batchSize ?? 200, 1), 200);
     const records = await ctx.db
       .query("paradeStateRecords")
       .withIndex("by_createdAt")
-      .order("desc")
-      .collect();
+      .filter((q) => q.eq(q.field("searchText"), undefined))
+      .take(batchSize);
 
-    return records.map(withDerivedImpact);
+    for (const record of records) {
+      await ctx.db.patch(record._id, {
+        searchText: buildRecordSearchText(record),
+      });
+    }
+
+    return {
+      patchedCount: records.length,
+      hasMore: records.length === batchSize,
+    };
   },
 });
 
