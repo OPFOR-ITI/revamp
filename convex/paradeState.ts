@@ -660,9 +660,6 @@ export const listRecordLog = query({
     search: v.optional(v.string()),
     statuses: v.optional(v.array(statusValidator)),
     platoon: v.optional(v.string()),
-    impact: v.optional(
-      v.union(v.literal("all"), v.literal("impact"), v.literal("no-impact")),
-    ),
     fromDate: v.string(),
     toDate: v.optional(v.string()),
   },
@@ -676,12 +673,6 @@ export const listRecordLog = query({
     const statuses = args.statuses ?? [];
     const fromDay = dateStringToDayIndex(args.fromDate);
     const toDay = args.toDate ? dateStringToDayIndex(args.toDate) : undefined;
-    const affectParadeState =
-      args.impact === "impact"
-        ? true
-        : args.impact === "no-impact"
-          ? false
-          : undefined;
 
     const filteredRecordLogQuery = search
       ? ctx.db
@@ -695,13 +686,6 @@ export const listRecordLog = query({
 
             if (statuses.length === 1) {
               searchQuery = searchQuery.eq("status", statuses[0]!);
-            }
-
-            if (affectParadeState !== undefined) {
-              searchQuery = searchQuery.eq(
-                "affectParadeState",
-                affectParadeState,
-              );
             }
 
             return searchQuery;
@@ -720,13 +704,6 @@ export const listRecordLog = query({
                 q.eq("status", statuses[0]!),
               )
               .order("desc")
-          : affectParadeState !== undefined
-            ? ctx.db
-                .query("paradeStateRecords")
-                .withIndex("by_affectParadeState_and_createdAt", (q) =>
-                  q.eq("affectParadeState", affectParadeState),
-                )
-                .order("desc")
             : ctx.db
                 .query("paradeStateRecords")
                 .withIndex("by_createdAt")
@@ -760,12 +737,8 @@ export const listRecordLog = query({
         const platoonFilter = args.platoon
           ? q.eq(q.field("platoon"), args.platoon)
           : true;
-        const impactFilter =
-          affectParadeState === undefined
-            ? true
-            : q.eq(q.field("affectParadeState"), affectParadeState);
 
-        return q.and(dateFilter, statusFilter, platoonFilter, impactFilter);
+        return q.and(dateFilter, statusFilter, platoonFilter);
       })
       .paginate(args.paginationOpts);
 

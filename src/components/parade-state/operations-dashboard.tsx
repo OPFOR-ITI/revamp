@@ -309,7 +309,6 @@ const adjustEndDateSchema = z.object({
 
 type RecordFormValues = z.infer<typeof recordFormSchema>;
 type AdjustEndDateValues = z.infer<typeof adjustEndDateSchema>;
-type ImpactFilter = "all" | "impact" | "no-impact";
 type DashboardView = "current-state" | "record-log";
 type RecordDialogMode = "add" | "edit";
 type RecordDialogState =
@@ -1734,7 +1733,6 @@ export function OperationsDashboard({
   const [statusFilter, setStatusFilter] = useState<Status[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [platoonFilter, setPlatoonFilter] = useState("all");
-  const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
   const [recordFilterFromDate, setRecordFilterFromDate] = useState(
     getTodaySingaporeDateString(),
   );
@@ -1770,7 +1768,6 @@ export function OperationsDashboard({
       search?: string;
       statuses?: Status[];
       platoon?: string;
-      impact?: ImpactFilter;
       fromDate: string;
       toDate?: string;
     } = {
@@ -1789,10 +1786,6 @@ export function OperationsDashboard({
       args.platoon = platoonFilter;
     }
 
-    if (impactFilter !== "all") {
-      args.impact = impactFilter;
-    }
-
     if (recordFilterToDate) {
       args.toDate = recordFilterToDate;
     }
@@ -1800,7 +1793,6 @@ export function OperationsDashboard({
     return args;
   }, [
     debouncedRecordSearch,
-    impactFilter,
     platoonFilter,
     recordFilterFromDate,
     recordFilterToDate,
@@ -1900,7 +1892,6 @@ export function OperationsDashboard({
       : statusFilter.length === 1
         ? formatStatusLabel(statusFilter[0])
         : `${statusFilter.length} statuses`;
-
   function handleRecordDeleted(record: ParadeStateRecordDoc) {
     if (selectedRecord?._id === record._id) {
       setRecordDialogState(null);
@@ -1957,7 +1948,7 @@ export function OperationsDashboard({
     activeView === "current-state" ? "Current State" : "Record Log";
   const currentStatePlatoonFilterLabel =
     currentStatePlatoonFilter === "all"
-      ? "All Platoons"
+      ? "All platoons"
       : currentStatePlatoonFilter;
   const hasCurrentStateSearch = currentStateSearch.trim().length > 0;
   const hasActiveCurrentStateFilters =
@@ -1973,13 +1964,11 @@ export function OperationsDashboard({
     hasRecordSearch ||
     hasStatusFilter ||
     platoonFilter !== "all" ||
-    impactFilter !== "all" ||
     hasCustomDateRange;
   const activeRecordFilterCount = [
     hasRecordSearch,
     hasStatusFilter,
     platoonFilter !== "all",
-    impactFilter !== "all",
     hasCustomDateRange,
   ].filter(Boolean).length;
   const nominalRollCount =
@@ -2001,7 +1990,6 @@ export function OperationsDashboard({
     setRecordSearch("");
     setStatusFilter([]);
     setPlatoonFilter("all");
-    setImpactFilter("all");
     setRecordFilterFromDate(todayDate);
     setRecordFilterToDate("");
   }
@@ -2273,7 +2261,7 @@ export function OperationsDashboard({
                             </span>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Platoons</SelectItem>
+                            <SelectItem value="all">All platoons</SelectItem>
                             {platoonOptions.map((platoon) => (
                               <SelectItem key={platoon} value={platoon}>
                                 {platoon}
@@ -2320,7 +2308,7 @@ export function OperationsDashboard({
                                       </span>
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="all">All Platoons</SelectItem>
+                                      <SelectItem value="all">All platoons</SelectItem>
                                       {platoonOptions.map((platoon) => (
                                         <SelectItem key={platoon} value={platoon}>
                                           {platoon}
