@@ -18,7 +18,11 @@ import { api } from "../../../convex/_generated/api";
 import { ConductAttendanceDialog } from "@/components/conducts/conduct-attendance-dialog";
 import { ConductFormDialog } from "@/components/conducts/conduct-form-dialog";
 import { ConductWhatsappPreviewDialog } from "@/components/conducts/conduct-whatsapp-preview-dialog";
-import type { ConductListItem, ConductNominalRollSeed } from "@/components/conducts/types";
+import type {
+  ConductListForDateResult,
+  ConductListItem,
+  ConductNominalRollSeed,
+} from "@/components/conducts/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -102,12 +106,9 @@ export function ConductsPage({
   const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
   const [isWhatsappPreviewOpen, setIsWhatsappPreviewOpen] = useState(false);
   const [deletingConductId, setDeletingConductId] = useState<string | null>(null);
-  const conducts = useQuery(api.conducts.listConductsForDate, {
+  const conductState = useQuery(api.conducts.listConductsForDate, {
     date: selectedDate,
-  }) as ConductListItem[] | undefined;
-  const snapshotSummary = useQuery(api.conducts.getConductSnapshotSummaryForDate, {
-    date: selectedDate,
-  });
+  }) as ConductListForDateResult | undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -162,6 +163,8 @@ export function ConductsPage({
   }, []);
 
   const nominalRollSeed = mapNominalRollSeed(personnel);
+  const conducts = conductState?.conducts;
+  const snapshotSummary = conductState?.snapshotSummary;
   const conductCount = conducts?.length ?? 0;
   const initializedCount =
     conducts?.filter((conduct) => conduct.hasAttendance).length ?? 0;
@@ -273,7 +276,7 @@ export function ConductsPage({
                   Conducts
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-zinc-950">
-                  {conducts === undefined ? "--" : conductCount.toString().padStart(2, "0")}
+                  {conductState === undefined ? "--" : conductCount.toString().padStart(2, "0")}
                 </p>
               </div>
               <div className="rounded-2xl border border-emerald-950/10 bg-white/75 px-4 py-3">
@@ -281,7 +284,7 @@ export function ConductsPage({
                   Initialized
                 </p>
                 <p className="mt-1 text-2xl font-semibold text-zinc-950">
-                  {conducts === undefined ? "--" : initializedCount.toString().padStart(2, "0")}
+                  {conductState === undefined ? "--" : initializedCount.toString().padStart(2, "0")}
                 </p>
               </div>
               <div className="rounded-2xl border border-emerald-950/10 bg-white/75 px-4 py-3">
@@ -450,7 +453,7 @@ export function ConductsPage({
                     type="button"
                     variant="outline"
                     onClick={() => openWhatsappPreview(conduct)}
-                    disabled={!conduct.whatsappData}
+                    disabled={!conduct.canPreviewWhatsapp}
                   >
                     <ClipboardCopy className="size-4" />
                     Preview WhatsApp

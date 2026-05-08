@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "convex/react";
 import { ClipboardCopy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { ConductListItem } from "@/components/conducts/types";
-import { Badge } from "@/components/ui/badge";
+import { api } from "../../../convex/_generated/api";
+import type {
+  ConductListItem,
+  ConductWhatsappData,
+} from "@/components/conducts/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +24,6 @@ import {
   formatConductWhatsappMessage,
   type ConductWhatsappNameListMode,
 } from "@/lib/conduct-whatsapp";
-import { formatDateLabel } from "@/lib/date";
 
 function getTabLabel(mode: ConductWhatsappNameListMode) {
   switch (mode) {
@@ -46,15 +49,13 @@ export function ConductWhatsappPreviewDialog({
     useState<ConductWhatsappNameListMode>("non-participating");
   const [isCopying, setIsCopying] = useState(false);
 
-  const whatsappData = conduct?.whatsappData ?? null;
+  const whatsappData = useQuery(
+    api.conducts.getConductWhatsappPreviewState,
+    open && conduct ? { conductId: conduct._id } : "skip",
+  ) as ConductWhatsappData | null | undefined;
   const previewText = whatsappData
     ? formatConductWhatsappMessage(whatsappData, { nameListMode })
     : "";
-  const postedTotal =
-    whatsappData?.sections.reduce(
-      (total, section) => total + section.postedStrength,
-      0,
-    ) ?? 0;
   const participatingTotal =
     whatsappData?.sections.reduce(
       (total, section) => total + section.participatingStrength,
@@ -99,7 +100,12 @@ export function ConductWhatsappPreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!whatsappData ? (
+        {whatsappData === undefined ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-emerald-950/10 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+            <Loader2 className="size-4 animate-spin" />
+            Loading WhatsApp preview.
+          </div>
+        ) : !whatsappData ? (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             Attendance has not been initialized yet, so the WhatsApp preview is unavailable.
           </div>

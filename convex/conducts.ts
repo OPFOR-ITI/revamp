@@ -248,15 +248,16 @@ function filterConductEligiblePersonnel(
 async function getSnapshotRowsForDate(
   ctx: QueryCtx | MutationCtx,
   date: string,
-  day: number,
 ) {
   const rows = await ctx.db
     .query("conductNominalRollSnapshots")
-    .withIndex("by_snapshotDay", (q) => q.eq("snapshotDay", day))
+    .withIndex("by_snapshotDate_and_personnelKey", (q) =>
+      q.eq("snapshotDate", date),
+    )
     .collect();
 
   return rows
-    .filter((row) => row.snapshotDate === date && isConductEligiblePlatoon(row.platoon))
+    .filter((row) => isConductEligiblePlatoon(row.platoon))
     .sort(sortSnapshotPersonnel);
 }
 
@@ -387,7 +388,7 @@ async function ensureSnapshotForTodayIfMissing(
     }[];
   },
 ) {
-  const existing = await getSnapshotRowsForDate(ctx, date, day);
+  const existing = await getSnapshotRowsForDate(ctx, date);
 
   if (existing.length > 0) {
     return existing;
@@ -433,7 +434,7 @@ async function ensureSnapshotForTodayIfMissing(
     });
   }
 
-  return await getSnapshotRowsForDate(ctx, date, day);
+  return await getSnapshotRowsForDate(ctx, date);
 }
 
 export const listConductsForDate = query({
@@ -452,14 +453,14 @@ export const listConductsForDate = query({
         .query("conducts")
         .withIndex("by_conductDay", (q) => q.eq("conductDay", conductDay))
         .collect(),
-      getSnapshotRowsForDate(ctx, args.date, conductDay),
+      getSnapshotRowsForDate(ctx, args.date),
     ]);
 
     const nominalRollCount = snapshotRows.length;
     const snapshotExists = nominalRollCount > 0;
     const snapshotStatus = resolveConductSnapshotStatus(args.date, snapshotExists);
 
-    return await Promise.all(
+    const conductItems = await Promise.all(
       conducts.sort(sortConductsDescending).map(async (conduct) => {
         const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
           ctx,
@@ -468,15 +469,6 @@ export const listConductsForDate = query({
         const nonPresentCount = attendanceEntries.length;
         const hasAttendance =
           conduct.attendanceInitializedAt !== undefined || nonPresentCount > 0;
-        const whatsappData =
-          hasAttendance && snapshotExists
-            ? buildConductWhatsappData({
-                conductName: conduct.name,
-                date: conduct.date,
-                snapshot: snapshotRows,
-                absentees: attendanceEntries,
-              })
-            : null;
 
         return {
           ...conduct,
@@ -485,10 +477,18 @@ export const listConductsForDate = query({
           nominalRollCount: snapshotExists ? nominalRollCount : null,
           snapshotStatus,
           hasAttendance,
-          whatsappData,
+          canPreviewWhatsapp: hasAttendance && snapshotExists,
         };
       }),
     );
+
+    return {
+      snapshotSummary: {
+        nominalRollCount,
+        snapshotStatus,
+      },
+      conducts: conductItems,
+    };
   },
 });
 
@@ -502,8 +502,8 @@ export const getConductSnapshotSummaryForDate = query({
       requirePermission: "conducts.view",
     });
 
-    const conductDay = validateConductDate(args.date);
-    const snapshotRows = await getSnapshotRowsForDate(ctx, args.date, conductDay);
+    validateConductDate(args.date);
+    const snapshotRows = await getSnapshotRowsForDate(ctx, args.date);
 
     return {
       nominalRollCount: snapshotRows.length,
@@ -528,7 +528,7 @@ export const getConductAttendanceEditorState = query({
       throw new ConvexError("The selected conduct no longer exists.");
     }
 
-    const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date, conduct.conductDay);
+    const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date);
     const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
       ctx,
       conduct._id,
@@ -537,8 +537,17 @@ export const getConductAttendanceEditorState = query({
     return {
       conduct,
       snapshotStatus: resolveConductSnapshotStatus(conduct.date, snapshotRows.length > 0),
-      snapshotRows,
-      attendanceEntries,
+      snapshotRows: snapshotRows.map((row) => ({
+        personnelKey: row.personnelKey,
+        rank: row.rank,
+        name: row.name,
+        platoon: row.platoon,
+      })),
+      attendanceEntries: attendanceEntries.map((entry) => ({
+        personnelKey: entry.personnelKey,
+        reason: entry.reason,
+        remarks: entry.remarks,
+      })),
       attendanceInitialized:
         conduct.attendanceInitializedAt !== undefined || attendanceEntries.length > 0,
       counts: buildAttendanceSummary(snapshotRows, attendanceEntries),
@@ -735,8 +744,11 @@ export const autoMarkConductAttendanceFromParadeState = mutation({
     attendanceEntries.sort(sortSnapshotPersonnel);
 
     return {
-      snapshotRows,
-      attendanceEntries,
+      attendanceEntries: attendanceEntries.map((entry) => ({
+        personnelKey: entry.personnelKey,
+        reason: entry.reason,
+        remarks: entry.remarks,
+      })),
       counts: buildAttendanceSummary(snapshotRows, attendanceEntries),
     };
   },
@@ -857,7 +869,7 @@ export const getConductWhatsappMessage = query({
       throw new ConvexError("The selected conduct no longer exists.");
     }
 
-    const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date, conduct.conductDay);
+    const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date);
     const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
       ctx,
       conduct._id,
@@ -881,6 +893,43 @@ export const getConductWhatsappMessage = query({
     return {
       message: formatConductWhatsappMessage(data),
     };
+  },
+});
+
+export const getConductWhatsappPreviewState = query({
+  args: {
+    conductId: v.id("conducts"),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "conducts.view",
+    });
+
+    const conduct = await ctx.db.get(args.conductId);
+
+    if (!conduct) {
+      throw new ConvexError("The selected conduct no longer exists.");
+    }
+
+    const snapshotRows = await getSnapshotRowsForDate(ctx, conduct.date);
+    const attendanceEntries = await getEffectiveAttendanceEntriesForConduct(
+      ctx,
+      conduct._id,
+    );
+    const hasAttendance =
+      conduct.attendanceInitializedAt !== undefined || attendanceEntries.length > 0;
+
+    if (snapshotRows.length === 0 || !hasAttendance) {
+      return null;
+    }
+
+    return buildConductWhatsappData({
+      conductName: conduct.name,
+      date: conduct.date,
+      snapshot: snapshotRows,
+      absentees: attendanceEntries,
+    });
   },
 });
 

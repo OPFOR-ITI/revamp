@@ -9,8 +9,6 @@ import type {
 } from "@/lib/conduct-whatsapp";
 
 export type ConductDoc = Doc<"conducts">;
-export type ConductNominalRollSnapshotDoc = Doc<"conductNominalRollSnapshots">;
-export type ConductAttendanceEntryDoc = Doc<"conductAttendanceEntries">;
 
 export type ConductSnapshotStatus =
   | "ready"
@@ -31,14 +29,35 @@ export type ConductListItem = ConductDoc & {
   nominalRollCount: number | null;
   snapshotStatus: ConductSnapshotStatus;
   hasAttendance: boolean;
-  whatsappData: ConductWhatsappData | null;
+  canPreviewWhatsapp: boolean;
+};
+
+export type ConductListForDateResult = {
+  snapshotSummary: {
+    nominalRollCount: number;
+    snapshotStatus: ConductSnapshotStatus;
+  };
+  conducts: ConductListItem[];
+};
+
+export type ConductAttendanceSnapshotRow = {
+  personnelKey: string;
+  rank: string;
+  name: string;
+  platoon: string;
+};
+
+export type ConductAttendanceDraftEntry = {
+  personnelKey: string;
+  reason: ConductNonPresentReason;
+  remarks?: string;
 };
 
 export type ConductAttendanceEditorState = {
   conduct: ConductDoc;
   snapshotStatus: ConductSnapshotStatus;
-  snapshotRows: ConductNominalRollSnapshotDoc[];
-  attendanceEntries: ConductAttendanceEntryDoc[];
+  snapshotRows: ConductAttendanceSnapshotRow[];
+  attendanceEntries: ConductAttendanceDraftEntry[];
   attendanceInitialized: boolean;
   counts: {
     nominalRollCount: number;
