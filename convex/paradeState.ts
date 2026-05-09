@@ -8,6 +8,7 @@ import {
   formatStatusLabel,
   getStatusRecordPeriodConfig,
   doesStatusAffectParadeState,
+  isMaStatus,
   isOtherStatus,
   isPermanentRecord,
   shouldShowOutOfCampToggle,
@@ -17,6 +18,8 @@ import {
   addDaysToDateString,
   dateStringToDayIndex,
   getTodaySingaporeDayIndex,
+  isTimeInHHmmWindow,
+  isValidMaTimeSlot,
   isValidTimeHHmm,
 } from "../src/lib/date";
 import type { Doc } from "./_generated/dataModel";
@@ -68,6 +71,59 @@ function normalizeCustomStatus(value?: string) {
   }
 
   return normalized;
+}
+
+function normalizeMaTimeWindow(
+  status: Status,
+  startTime?: string,
+  endTime?: string,
+) {
+  if (!isMaStatus(status)) {
+    return { startTime: undefined, endTime: undefined };
+  }
+
+  const normalizedStartTime = startTime?.trim() ?? "";
+  const normalizedEndTime = endTime?.trim() ?? "";
+
+  if (!normalizedStartTime || !normalizedEndTime) {
+    throw new ConvexError("Start time and end time are required for MA.");
+  }
+
+  if (
+    !isValidTimeHHmm(normalizedStartTime) ||
+    !isValidTimeHHmm(normalizedEndTime)
+  ) {
+    throw new ConvexError('MA times must use the "HHmm" format.');
+  }
+
+  if (!isValidMaTimeSlot(normalizedStartTime) || !isValidMaTimeSlot(normalizedEndTime)) {
+    throw new ConvexError("MA times must be between 0600 and 1900 in 10-minute intervals.");
+  }
+
+  if (normalizedEndTime < normalizedStartTime) {
+    throw new ConvexError("MA end time must be on or after the start time.");
+  }
+
+  return { startTime: normalizedStartTime, endTime: normalizedEndTime };
+}
+
+function isMaRecordActiveAtTime(
+  record: { status: Status; startTime?: string; endTime?: string },
+  asAtTime?: string,
+) {
+  if (!isMaStatus(record.status) || !asAtTime) {
+    return true;
+  }
+
+  if (!record.startTime || !record.endTime) {
+    return true;
+  }
+
+  return isTimeInHHmmWindow({
+    startTime: record.startTime,
+    endTime: record.endTime,
+    targetTime: asAtTime,
+  });
 }
 
 function resolveParadeStateImpact(
@@ -158,17 +214,20 @@ function withDerivedImpact<
     affectParadeState: boolean;
     isPermanent?: boolean;
     endDate?: string;
+    startTime?: string;
+    endTime?: string;
   },
 >(
   record: T,
+  asAtTime?: string,
 ) {
   return {
     ...record,
     isPermanent: isPermanentRecord(record),
-    affectParadeState: resolveParadeStateImpact(
-      record.status,
-      record.affectParadeState,
-    ),
+    affectParadeState:
+      isMaStatus(record.status) && asAtTime
+        ? isMaRecordActiveAtTime(record, asAtTime)
+        : resolveParadeStateImpact(record.status, record.affectParadeState),
   };
 }
 
@@ -202,6 +261,8 @@ async function ensureNoDuplicateRecord(
     isPermanent,
     startDay,
     endDay,
+    startTime,
+    endTime,
   }: {
     personnelKey: string;
     status: Status;
@@ -209,6 +270,8 @@ async function ensureNoDuplicateRecord(
     isPermanent: boolean;
     startDay: number;
     endDay?: number;
+    startTime?: string;
+    endTime?: string;
   },
 ) {
   const existingRecords = await ctx.db
@@ -222,7 +285,9 @@ async function ensureNoDuplicateRecord(
       (record.customStatus ?? undefined) === (customStatus ?? undefined) &&
       isPermanentRecord(record) === isPermanent &&
       record.startDay === startDay &&
-      (record.endDay ?? undefined) === (endDay ?? undefined),
+      (record.endDay ?? undefined) === (endDay ?? undefined) &&
+      (record.startTime ?? undefined) === (startTime ?? undefined) &&
+      (record.endTime ?? undefined) === (endTime ?? undefined),
   );
 
   if (duplicate) {
@@ -290,6 +355,8 @@ function normalizeSnapshotRecords(
     affectParadeState: boolean;
     startDate: string;
     endDate?: string;
+    startTime?: string;
+    endTime?: string;
     remarks?: string;
     createdAt: number;
     updatedAt: number;
@@ -307,6 +374,8 @@ function normalizeSnapshotRecords(
     affectParadeState: record.affectParadeState,
     startDate: record.startDate,
     endDate: record.endDate?.trim() || undefined,
+    startTime: record.startTime?.trim() || undefined,
+    endTime: record.endTime?.trim() || undefined,
     remarks: normalizeRemarks(record.remarks),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -362,6 +431,8 @@ export const createRecord = mutation({
     affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
     endDate: v.optional(v.string()),
+    startTime: v.optional(v.string()),
+    endTime: v.optional(v.string()),
     remarks: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -377,6 +448,11 @@ export const createRecord = mutation({
     );
     const now = Date.now();
     const customStatus = normalizeCustomStatus(args.customStatus);
+    const maTimeWindow = normalizeMaTimeWindow(
+      args.status,
+      args.startTime,
+      args.endTime,
+    );
 
     if (isOtherStatus(args.status) && !customStatus) {
       throw new ConvexError("Enter the custom status for Others.");
@@ -398,6 +474,8 @@ export const createRecord = mutation({
       isPermanent,
       startDay,
       endDay,
+      startTime: maTimeWindow.startTime,
+      endTime: maTimeWindow.endTime,
     });
 
     return await ctx.db.insert("paradeStateRecords", {
@@ -412,6 +490,8 @@ export const createRecord = mutation({
       affectParadeState,
       startDate: args.startDate,
       endDate,
+      startTime: maTimeWindow.startTime,
+      endTime: maTimeWindow.endTime,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
@@ -441,6 +521,8 @@ export const updateRecord = mutation({
     affectParadeState: v.optional(v.boolean()),
     startDate: v.string(),
     endDate: v.optional(v.string()),
+    startTime: v.optional(v.string()),
+    endTime: v.optional(v.string()),
     remarks: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -461,6 +543,11 @@ export const updateRecord = mutation({
       args.isPermanent,
     );
     const customStatus = normalizeCustomStatus(args.customStatus);
+    const maTimeWindow = normalizeMaTimeWindow(
+      args.status,
+      args.startTime,
+      args.endTime,
+    );
 
     if (isOtherStatus(args.status) && !customStatus) {
       throw new ConvexError("Enter the custom status for Others.");
@@ -478,6 +565,8 @@ export const updateRecord = mutation({
       affectParadeState,
       startDate: args.startDate,
       endDate,
+      startTime: maTimeWindow.startTime,
+      endTime: maTimeWindow.endTime,
       startDay,
       endDay,
       remarks: normalizeRemarks(args.remarks),
@@ -583,7 +672,7 @@ export const listCurrentState = query({
           .collect();
 
     const activeRecords = [...permanentRecords, ...datedRecords]
-      .map(withDerivedImpact)
+      .map((record) => withDerivedImpact(record))
       .filter((record) => record.startDay <= todayDay)
       .sort(sortRecordsDescending);
 
@@ -630,6 +719,7 @@ export const listCurrentState = query({
 export const listActiveRecordsForDate = query({
   args: {
     date: v.string(),
+    asAtTime: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ensureCurrentUser(ctx, {
@@ -638,6 +728,10 @@ export const listActiveRecordsForDate = query({
     });
 
     const targetDay = dateStringToDayIndex(args.date);
+    if (args.asAtTime !== undefined && !isValidTimeHHmm(args.asAtTime)) {
+      throw new ConvexError('As-at time must use the "HHmm" format.');
+    }
+
     const permanentRecords = await ctx.db
       .query("paradeStateRecords")
       .withIndex("by_isPermanent", (q) => q.eq("isPermanent", true))
@@ -648,8 +742,12 @@ export const listActiveRecordsForDate = query({
       .collect();
 
     return [...permanentRecords, ...datedRecords]
-      .map(withDerivedImpact)
-      .filter((record) => record.startDay <= targetDay)
+      .filter(
+        (record) =>
+          record.startDay <= targetDay &&
+          isMaRecordActiveAtTime(record, args.asAtTime),
+      )
+      .map((record) => withDerivedImpact(record, args.asAtTime))
       .sort(sortRecordsDescending);
   },
 });
@@ -744,7 +842,7 @@ export const listRecordLog = query({
 
     return {
       ...records,
-      page: records.page.map(withDerivedImpact),
+      page: records.page.map((record) => withDerivedImpact(record)),
     };
   },
 });
@@ -922,6 +1020,8 @@ export const listRecordsForPersonnel = query({
       .order("desc")
       .collect();
 
-    return records.map(withDerivedImpact).sort(sortRecordsDescending);
+    return records
+      .map((record) => withDerivedImpact(record))
+      .sort(sortRecordsDescending);
   },
 });

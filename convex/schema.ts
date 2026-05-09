@@ -57,6 +57,8 @@ export default defineSchema({
     affectParadeState: v.boolean(),
     startDate: v.string(),
     endDate: v.optional(v.string()),
+    startTime: v.optional(v.string()),
+    endTime: v.optional(v.string()),
     startDay: v.number(),
     endDay: v.optional(v.number()),
     remarks: v.optional(v.string()),

@@ -24,6 +24,8 @@ export const paradeStateSnapshotRecordValidator = v.object({
   affectParadeState: v.boolean(),
   startDate: v.string(),
   endDate: v.optional(v.string()),
+  startTime: v.optional(v.string()),
+  endTime: v.optional(v.string()),
   remarks: v.optional(v.string()),
   createdAt: v.number(),
   updatedAt: v.number(),

@@ -3,6 +3,9 @@ import { addDays, format, parseISO } from "date-fns";
 import { SINGAPORE_TIME_ZONE } from "@/lib/constants";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+export const MA_TIME_WINDOW_START = "0600";
+export const MA_TIME_WINDOW_END = "1900";
+export const MA_TIME_MINUTE_STEP = 10;
 const dateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SINGAPORE_TIME_ZONE,
   year: "numeric",
@@ -98,6 +101,112 @@ export function getDayOffsetBetweenDates(startDate: string, endDate: string) {
 
 export function isValidTimeHHmm(value: string) {
   return /^([01]\d|2[0-3])[0-5]\d$/.test(value);
+}
+
+export function getTimeMinutesFromHHmm(value: string) {
+  if (!isValidTimeHHmm(value)) {
+    return null;
+  }
+
+  const hours = Number(value.slice(0, 2));
+  const minutes = Number(value.slice(2, 4));
+
+  return hours * 60 + minutes;
+}
+
+export function isValidTimeSlot({
+  value,
+  minTime,
+  maxTime,
+  minuteStep,
+}: {
+  value: string;
+  minTime: string;
+  maxTime: string;
+  minuteStep: number;
+}) {
+  const minutes = getTimeMinutesFromHHmm(value);
+  const minMinutes = getTimeMinutesFromHHmm(minTime);
+  const maxMinutes = getTimeMinutesFromHHmm(maxTime);
+
+  if (
+    minutes === null ||
+    minMinutes === null ||
+    maxMinutes === null ||
+    minuteStep <= 0
+  ) {
+    return false;
+  }
+
+  return (
+    minMinutes <= minutes &&
+    minutes <= maxMinutes &&
+    (minutes - minMinutes) % minuteStep === 0
+  );
+}
+
+export function isValidMaTimeSlot(value: string) {
+  return isValidTimeSlot({
+    value,
+    minTime: MA_TIME_WINDOW_START,
+    maxTime: MA_TIME_WINDOW_END,
+    minuteStep: MA_TIME_MINUTE_STEP,
+  });
+}
+
+export function getTimeOptions({
+  minTime,
+  maxTime,
+  minuteStep,
+}: {
+  minTime: string;
+  maxTime: string;
+  minuteStep: number;
+}) {
+  const minMinutes = getTimeMinutesFromHHmm(minTime);
+  const maxMinutes = getTimeMinutesFromHHmm(maxTime);
+
+  if (minMinutes === null || maxMinutes === null || minuteStep <= 0) {
+    return [];
+  }
+
+  const options: string[] = [];
+
+  for (
+    let minutes = minMinutes;
+    minutes <= maxMinutes;
+    minutes += minuteStep
+  ) {
+    const hoursPart = String(Math.floor(minutes / 60)).padStart(2, "0");
+    const minutesPart = String(minutes % 60).padStart(2, "0");
+    options.push(`${hoursPart}${minutesPart}`);
+  }
+
+  return options;
+}
+
+export function formatTimeHHmmLabel(value: string) {
+  return isValidTimeHHmm(value) ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : value;
+}
+
+export function isTimeInHHmmWindow({
+  startTime,
+  endTime,
+  targetTime,
+}: {
+  startTime: string;
+  endTime: string;
+  targetTime: string;
+}) {
+  if (
+    !isValidTimeHHmm(startTime) ||
+    !isValidTimeHHmm(endTime) ||
+    !isValidTimeHHmm(targetTime)
+  ) {
+    return false;
+  }
+
+  return startTime <= targetTime && targetTime <= endTime;
 }
 
 export function getCurrentSingaporeTimeHHmm(now = new Date()) {

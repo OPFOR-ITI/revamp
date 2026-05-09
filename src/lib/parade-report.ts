@@ -70,6 +70,8 @@ export type ParadeReportRecord = Pick<
   | "affectParadeState"
   | "startDate"
   | "endDate"
+  | "startTime"
+  | "endTime"
   | "remarks"
   | "createdAt"
   | "updatedAt"

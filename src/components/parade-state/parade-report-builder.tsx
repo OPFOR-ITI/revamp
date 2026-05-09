@@ -141,6 +141,8 @@ function toSnapshotActiveRecords(records: ParadeStateRecordDoc[]) {
     affectParadeState: record.affectParadeState,
     startDate: record.startDate,
     endDate: record.endDate,
+    startTime: record.startTime,
+    endTime: record.endTime,
     remarks: record.remarks,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -298,10 +300,17 @@ export function ParadeReportBuilder({
   const snapshot = useQuery(api.paradeState.getSnapshotForDate, {
     date: selectedDate,
   }) as ParadeStateSnapshotDoc | null | undefined;
+  const timeError =
+    asAtTime.length > 0 && !isValidTimeHHmm(asAtTime)
+      ? 'Use 24-hour "HHmm" format, for example 0830 or 1745.'
+      : null;
+  const hasValidAsAtTime = isValidTimeHHmm(asAtTime);
 
   const activeRecords = useQuery(
     api.paradeState.listActiveRecordsForDate,
-    snapshot === null ? { date: selectedDate } : "skip",
+    snapshot === null && hasValidAsAtTime
+      ? { date: selectedDate, asAtTime }
+      : "skip",
   ) as ParadeStateRecordDoc[] | undefined;
   const liveDutyAssignments = useQuery(
     api.duties.listAssignmentsForRange,
@@ -376,10 +385,6 @@ export function ParadeReportBuilder({
     autoCopiedRef.current = false;
   }, [autoCopyOnReady]);
 
-  const timeError =
-    asAtTime.length > 0 && !isValidTimeHHmm(asAtTime)
-      ? 'Use 24-hour "HHmm" format, for example 0830 or 1745.'
-      : null;
   const snapshotExists = snapshot !== null && snapshot !== undefined;
   const reportPersonnel = snapshot?.personnel ?? personnel;
   const reportActiveRecords = snapshot?.activeRecords ?? activeRecords;
@@ -608,6 +613,7 @@ export function ParadeReportBuilder({
           loadPersonnelFromRoute(),
           convex.query(api.paradeState.listActiveRecordsForDate, {
             date: selectedDate,
+            asAtTime,
           }) as Promise<ParadeStateRecordDoc[]>,
           convex.query(api.duties.listAssignmentsForRange, {
             fromDate: selectedDate,

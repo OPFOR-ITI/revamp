@@ -131,6 +131,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DateStepperField } from "@/components/ui/date-stepper-field";
+import { TimePicker } from "@/components/ui/time-picker";
 import {
   APP_USER_PLATOON_VALUES,
   DUPLICATE_STATUS_RECORD_MESSAGE,
@@ -141,6 +142,7 @@ import {
   STATUS_VALUES,
   formatStatusLabel,
   getStatusRecordPeriodConfig,
+  isMaStatus,
   isOtherStatus,
   isPermanentRecord,
   shouldShowOutOfCampToggle,
@@ -153,9 +155,14 @@ import {
   getDayOffsetBetweenDates,
   formatDateLabel,
   formatTimestampLabel,
+  MA_TIME_MINUTE_STEP,
+  MA_TIME_WINDOW_END,
+  MA_TIME_WINDOW_START,
   getTemporalBucketForDayRange,
   getTodaySingaporeDateString,
   getTodaySingaporeDayIndex,
+  isValidMaTimeSlot,
+  isValidTimeHHmm,
   TemporalBucket,
   TEMPORAL_BUCKET_COLORS,
 } from "@/lib/date";
@@ -175,6 +182,8 @@ type RecordPeriodFormValues = {
   isPermanent: boolean;
   startDate: string;
   endDate?: string;
+  startTime?: string;
+  endTime?: string;
 };
 
 function addRecordFormIssues(
@@ -211,6 +220,59 @@ function addRecordFormIssues(
       path: ["customStatus"],
       message: "Enter the custom status for Others.",
     });
+  }
+
+  if (isMaStatus(values.status)) {
+    const startTime = values.startTime?.trim() ?? "";
+    const endTime = values.endTime?.trim() ?? "";
+
+    if (!startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: "Start time is required for MA.",
+      });
+    } else if (!isValidTimeHHmm(startTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: 'Use "HHmm" format, for example 0830.',
+      });
+    } else if (!isValidMaTimeSlot(startTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: "Choose a 10-minute slot from 0600 to 1900.",
+      });
+    }
+
+    if (!endTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "End time is required for MA.",
+      });
+    } else if (!isValidTimeHHmm(endTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: 'Use "HHmm" format, for example 1745.',
+      });
+    } else if (!isValidMaTimeSlot(endTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "Choose a 10-minute slot from 0600 to 1900.",
+      });
+    }
+
+    if (isValidTimeHHmm(startTime) && isValidTimeHHmm(endTime) && endTime < startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "End time must be on or after the start time.",
+      });
+    }
   }
 }
 
@@ -296,6 +358,8 @@ const recordFormSchema = z
     isPermanent: z.boolean(),
     startDate: z.string().min(1, "Start date is required."),
     endDate: z.string().optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
     remarks: z
       .string()
       .max(MAX_REMARKS_LENGTH, `Remarks must be ${MAX_REMARKS_LENGTH} characters or fewer.`)
@@ -331,6 +395,8 @@ function getEmptyRecordFormValues(): RecordFormValues {
     isPermanent: false,
     startDate: getTodaySingaporeDateString(),
     endDate: "",
+    startTime: "",
+    endTime: "",
     remarks: "",
   };
 }
@@ -346,6 +412,8 @@ function getRecordFormValuesFromRecord(
     isPermanent: isPermanentRecord(record),
     startDate: record.startDate,
     endDate: record.endDate ?? "",
+    startTime: record.startTime ?? "",
+    endTime: record.endTime ?? "",
     remarks: record.remarks ?? "",
   };
 }
@@ -384,12 +452,20 @@ function formatRecordPeriod(record: {
   startDate: string;
   endDate?: string;
   isPermanent?: boolean;
+  startTime?: string;
+  endTime?: string;
 }) {
   if (isPermanentRecord(record)) {
     return "Permanent";
   }
 
-  return `${formatDateLabel(record.startDate)} to ${formatDateLabel(record.endDate ?? record.startDate)}`;
+  const dateLabel = `${formatDateLabel(record.startDate)} to ${formatDateLabel(record.endDate ?? record.startDate)}`;
+  const timeLabel =
+    record.startTime && record.endTime
+      ? `, ${record.startTime}-${record.endTime}hrs`
+      : "";
+
+  return `${dateLabel}${timeLabel}`;
 }
 
 function ImpactBadge({ affectsParadeState }: { affectsParadeState: boolean }) {
@@ -526,6 +602,41 @@ function StatusDaysField({
         placeholder="0"
         className="h-10"
       />
+    </FormItem>
+  );
+}
+
+function StatusTimeField({
+  id,
+  label,
+  value,
+  onChange,
+  minTime,
+  maxTime,
+  minuteStep,
+  error,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  minTime: string;
+  maxTime: string;
+  minuteStep: number;
+  error?: string;
+}) {
+  return (
+    <FormItem>
+      <FormLabel htmlFor={id}>{label}</FormLabel>
+      <TimePicker
+        id={id}
+        value={value}
+        onChange={onChange}
+        minTime={minTime}
+        maxTime={maxTime}
+        minuteStep={minuteStep}
+      />
+      <FormMessage>{error}</FormMessage>
     </FormItem>
   );
 }
@@ -683,6 +794,14 @@ function RecordDialog({
     control: form.control,
     name: "endDate",
   });
+  const startTime = useWatch({
+    control: form.control,
+    name: "startTime",
+  });
+  const endTime = useWatch({
+    control: form.control,
+    name: "endTime",
+  });
   const selectedStatusRecordPeriodConfig = getStatusRecordPeriodConfig(selectedStatus);
   const fixedDurationDays = selectedStatusRecordPeriodConfig.fixedDurationDays;
   const selectedPersonnel = personnel.find(
@@ -719,8 +838,19 @@ function RecordDialog({
       });
     }
 
-    if (!shouldShowOutOfCampToggle(selectedStatus)) {
+    if (!shouldShowOutOfCampToggle(selectedStatus) || isMaStatus(selectedStatus)) {
       form.setValue("affectParadeState", false, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+    }
+
+    if (!isMaStatus(selectedStatus)) {
+      form.setValue("startTime", "", {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
+      form.setValue("endTime", "", {
         shouldDirty: false,
         shouldValidate: false,
       });
@@ -836,6 +966,12 @@ function RecordDialog({
               isPermanent: resolvedPeriod.isPermanent,
               startDate: values.startDate,
               endDate: resolvedPeriod.endDate,
+              startTime: isMaStatus(values.status)
+                ? values.startTime?.trim()
+                : undefined,
+              endTime: isMaStatus(values.status)
+                ? values.endTime?.trim()
+                : undefined,
               remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
             });
             successCount++;
@@ -892,6 +1028,10 @@ function RecordDialog({
           isPermanent: resolvedPeriod.isPermanent,
           startDate: values.startDate,
           endDate: resolvedPeriod.endDate,
+          startTime: isMaStatus(values.status)
+            ? values.startTime?.trim()
+            : undefined,
+          endTime: isMaStatus(values.status) ? values.endTime?.trim() : undefined,
           remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
         });
 
@@ -914,6 +1054,10 @@ function RecordDialog({
           isPermanent: resolvedPeriod.isPermanent,
           startDate: values.startDate,
           endDate: resolvedPeriod.endDate,
+          startTime: isMaStatus(values.status)
+            ? values.startTime?.trim()
+            : undefined,
+          endTime: isMaStatus(values.status) ? values.endTime?.trim() : undefined,
           remarks: values.remarks?.trim() ? values.remarks.trim() : undefined,
         });
 
@@ -1122,7 +1266,7 @@ function RecordDialog({
                   })
                 }
               />
-            ) : shouldShowOutOfCampToggle(selectedStatus) ? (
+            ) : shouldShowOutOfCampToggle(selectedStatus) && !isMaStatus(selectedStatus) ? (
               <FormItem>
                 <div className="flex h-full items-center justify-between rounded-xl border border-border px-3 py-2.5">
                   <FormLabel>Out of camp?</FormLabel>
@@ -1146,17 +1290,55 @@ function RecordDialog({
               className={
                 fixedDurationDays === undefined
                   ? "grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)] sm:items-start"
-                  : "grid gap-5"
+                  : isMaStatus(selectedStatus)
+                    ? "grid gap-5 sm:grid-cols-2 sm:items-start"
+                    : "grid gap-5"
               }
             >
               {fixedDurationDays !== undefined ? (
-                <DateStepperField
-                  id={`${mode}-start-date`}
-                  label="Start date"
-                  value={startDate}
-                  onChange={handleStartDateChange}
-                  error={form.formState.errors.startDate?.message}
-                />
+                <>
+                  <DateStepperField
+                    id={`${mode}-start-date`}
+                    label="Start date"
+                    value={startDate}
+                    onChange={handleStartDateChange}
+                    error={form.formState.errors.startDate?.message}
+                  />
+                  {isMaStatus(selectedStatus) ? (
+                    <div className="grid gap-2 grid-cols-2">
+                      <StatusTimeField
+                        id={`${mode}-ma-start-time`}
+                        label="Start time"
+                        value={startTime ?? ""}
+                        minTime={MA_TIME_WINDOW_START}
+                        maxTime={MA_TIME_WINDOW_END}
+                        minuteStep={MA_TIME_MINUTE_STEP}
+                        onChange={(value) =>
+                          form.setValue("startTime", value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                        error={form.formState.errors.startTime?.message}
+                      />
+                      <StatusTimeField
+                        id={`${mode}-ma-end-time`}
+                        label="End time"
+                        value={endTime ?? ""}
+                        minTime={MA_TIME_WINDOW_START}
+                        maxTime={MA_TIME_WINDOW_END}
+                        minuteStep={MA_TIME_MINUTE_STEP}
+                        onChange={(value) =>
+                          form.setValue("endTime", value, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                        error={form.formState.errors.endTime?.message}
+                      />
+                    </div>
+                  ) : null}
+                </>
               ) : isPermanent ? (
                 <div className="flex items-center rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground sm:col-span-3">
                   {isAddMode

@@ -35,6 +35,7 @@ export const STATUS_DEFINITIONS = [
 
 export type Status = (typeof STATUS_DEFINITIONS)[number]["value"];
 export const OTHER_STATUS_VALUE = "Others" as const;
+export const MA_STATUS_VALUE = "MA" as const;
 export const DUPLICATE_STATUS_RECORD_MESSAGE =
   "This serviceman already has the same status for the same dates. Edit the existing record instead of adding it again if changes are needed.";
 
@@ -54,7 +55,7 @@ export const HIDE_RECORD_PERIOD_METADATA_STATUSES: readonly Status[] = [
   "STAY OUT",
   "BOOKED OUT",
   "MA",
-  "JAIL",
+  "JAIL"
 ];
 
 type StatusRecordPeriodMode = "standard" | "fixed-duration";
@@ -136,6 +137,10 @@ export function shouldShowOutOfCampToggle(status: Status) {
 
 export function isOtherStatus(status: Status) {
   return status === OTHER_STATUS_VALUE;
+}
+
+export function isMaStatus(status: Status) {
+  return status === MA_STATUS_VALUE;
 }
 
 export function formatStatusLabel(status: Status, customStatus?: string) {
