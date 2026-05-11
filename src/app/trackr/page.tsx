@@ -14,7 +14,7 @@ export default async function TrackrPage() {
         roles: user.roles,
       }}
       title="Trackr Activities"
-      description="Paste a browser cookie and extract normalized activity rows from Trackr before wiring up any downstream automation."
+      description="Connect a Trackr browser session, fetch OPFOR activities, and update attendance from one compact workspace."
       navGroups={getPrimaryNavGroups({
         activeItem: "trackr-activities",
         roles: user.roles,

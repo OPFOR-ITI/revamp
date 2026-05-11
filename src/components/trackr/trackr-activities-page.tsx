@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { usePaginatedQuery } from "convex/react";
 import {
   ArrowUpRight,
+  CheckCircle2,
   Clock3,
   Database,
+  KeyRound,
   Loader2,
+  RefreshCw,
   ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -188,10 +197,13 @@ export function TrackrActivitiesPage() {
     readStoredTrackrCookie,
     () => "",
   );
+  const [hasMounted, setHasMounted] = useState(false);
   const [cookieInput, setCookieInput] = useState<string | null>(null);
   const [includePast, setIncludePast] = useState(true);
   const [personnel, setPersonnel] = useState<PersonnelRecord[]>([]);
   const [trackrActivities, setTrackrActivities] = useState<TrackrActivity[]>([]);
+  const [isCookieDialogRequested, setIsCookieDialogRequested] = useState(false);
+  const [isCookieDialogDismissed, setIsCookieDialogDismissed] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedTrackrActivityId, setSelectedTrackrActivityId] = useState<
     string | null
@@ -204,9 +216,15 @@ export function TrackrActivitiesPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [personnelError, setPersonnelError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const autoFetchedCookieRef = useRef("");
 
   const cookie = cookieInput ?? storedCookie;
   const hasCookieValue = cookie.trim().length > 0;
+  const hasStoredCookie = storedCookie.trim().length > 0;
+  const shouldAutoOpenCookieDialog =
+    hasMounted && !hasStoredCookie && cookieInput === null && !isCookieDialogDismissed;
+  const isCookieDialogOpen =
+    isCookieDialogRequested || shouldAutoOpenCookieDialog;
   const selectedCreateConduct =
     sourceConducts.find((conduct) => conduct._id === selectedCreateConductId) ?? null;
   const selectedTrackrActivity =
@@ -225,6 +243,10 @@ export function TrackrActivitiesPage() {
   const isLoadingMoreSourceConducts =
     sourceConductPaginationStatus === "LoadingFirstPage" ||
     sourceConductPaginationStatus === "LoadingMore";
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,13 +294,20 @@ export function TrackrActivitiesPage() {
     };
   }, []);
 
-  function handleStoreCookie() {
-    if (!hasCookieValue) {
+  async function handleSaveCookieAndLoad() {
+    const nextCookie = cookie.trim();
+
+    if (!nextCookie) {
+      toast.error("Enter your Trackr browser cookie first.");
       return;
     }
 
-    persistTrackrCookie(cookie);
+    persistTrackrCookie(nextCookie);
+    setCookieInput(nextCookie);
+    setIsCookieDialogRequested(false);
+    setIsCookieDialogDismissed(false);
     toast.success("Trackr cookie stored for 45 minutes.");
+    await handleLoadActivities(nextCookie);
   }
 
   function handlePreviousPage() {
@@ -296,16 +325,20 @@ export function TrackrActivitiesPage() {
   function openUpdateDialog(trackrActivityId: string) {
     if (!cookie.trim()) {
       toast.error("Enter your Trackr cookie first.");
+      setIsCookieDialogRequested(true);
       return;
     }
 
     setSelectedTrackrActivityId(trackrActivityId);
   }
 
-  async function handleLoadActivities() {
-    if (!cookie.trim()) {
+  const handleLoadActivities = useCallback(async (cookieOverride?: string) => {
+    const requestCookie = (cookieOverride ?? cookie).trim();
+
+    if (!requestCookie) {
       setErrorMessage("Enter your Trackr cookie first.");
       toast.error("Enter your Trackr cookie first.");
+      setIsCookieDialogRequested(true);
       return;
     }
 
@@ -320,7 +353,7 @@ export function TrackrActivitiesPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          cookie,
+          cookie: requestCookie,
           isPast: includePast,
         }),
       });
@@ -353,7 +386,20 @@ export function TrackrActivitiesPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [cookie, includePast]);
+
+  useEffect(() => {
+    if (
+      !hasStoredCookie ||
+      trackrActivities.length > 0 ||
+      autoFetchedCookieRef.current === storedCookie
+    ) {
+      return;
+    }
+
+    autoFetchedCookieRef.current = storedCookie;
+    void handleLoadActivities(storedCookie);
+  }, [handleLoadActivities, hasStoredCookie, storedCookie, trackrActivities.length]);
 
   async function handleCreateTrackrActivity() {
     if (!selectedCreateConduct) {
@@ -363,6 +409,7 @@ export function TrackrActivitiesPage() {
 
     if (!cookie.trim()) {
       toast.error("Enter your Trackr cookie first.");
+      setIsCookieDialogRequested(true);
       return;
     }
 
@@ -461,8 +508,8 @@ export function TrackrActivitiesPage() {
     <div className="space-y-4">
       <section className="grid gap-4">
         <Card className="border-emerald-950/10 bg-[linear-gradient(135deg,rgba(255,250,237,0.96),rgba(235,245,229,0.92))] shadow-[0_24px_70px_-42px_rgba(52,87,43,0.55)]">
-          <CardHeader className="gap-3 border-b border-emerald-950/8">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardHeader className="gap-3 border-b border-emerald-950/8 pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <Badge className="border-none bg-emerald-950 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.26em] text-emerald-50">
                   Trackr intake
@@ -470,107 +517,94 @@ export function TrackrActivitiesPage() {
                 <CardTitle className="mt-3 text-xl text-zinc-950">
                   OPFOR conduct importer
                 </CardTitle>
-                <CardDescription className="mt-2 max-w-2xl text-sm leading-6 text-zinc-700">
-                  Paste your browser cookie, fetch Trackr activities, discard
-                  everything that is not OPFOR, and work from the live OPFOR
-                  results in this session.
+                <CardDescription className="mt-2 max-w-xl text-sm leading-6 text-zinc-700">
+                  Live Trackr OPFOR results, kept lean. Cookie setup now happens
+                  only when the session needs it.
                 </CardDescription>
               </div>
-              <div className="grid grid-cols-2 gap-2 align-center">
-                <div className="rounded-2xl border border-emerald-950/10 bg-white/70 px-4 py-3 shadow-sm">
+              <div className="grid grid-cols-2 gap-2 align-center sm:grid-cols-3">
+                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                    Source
+                    Session
                   </p>
-                  <p className="mt-2 font-mono text-xs text-zinc-700">
-                    /api/v1/activities/units
+                  <p className="mt-1 font-mono text-xs text-zinc-700">
+                    {hasCookieValue ? "Cookie ready" : "Needs cookie"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-emerald-950/10 bg-white/70 px-4 py-3 shadow-sm">
+                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
                   <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
                     <Database className="size-3.5" />
                     Loaded
                   </div>
-                  <p className="mt-2 font-mono text-xs text-zinc-700">
+                  <p className="mt-1 font-mono text-xs text-zinc-700">
                     {trackrActivities.length}
+                  </p>
+                </div>
+                <div className="col-span-2 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm sm:col-span-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                    Source
+                  </p>
+                  <p className="mt-1 truncate font-mono text-xs text-zinc-700">
+                    /api/v1/activities/units
                   </p>
                 </div>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-              <div className="space-y-2">
-                <Label htmlFor="trackr-cookie" className="text-sm font-semibold text-zinc-900">
-                  Browser cookie
-                </Label>
-                <Textarea
-                  id="trackr-cookie"
-                  value={cookie}
-                  onChange={(event) => {
-                    setCookieInput(event.target.value);
-                  }}
-                  placeholder="trackr.sid=... or paste the full Cookie header"
-                  className="min-h-28 rounded-2xl border-emerald-950/10 bg-white/80 px-4 py-3 font-mono text-xs shadow-sm"
+          <CardContent className="space-y-4 py-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2">
+                <Switch
+                  id="trackr-past-switch"
+                  checked={includePast}
+                  onCheckedChange={setIncludePast}
                 />
-                <p className="text-xs leading-5 text-zinc-600">
-                  The cookie stays in this tab state unless you explicitly store
-                  it. Stored cookies expire after 45 minutes.
-                </p>
-                {hasCookieValue ? (
-                  <div className="pt-1">
-                    <Button
-                      variant="outline"
-                      onClick={handleStoreCookie}
-                      className="rounded-2xl border-emerald-950/10 bg-white/80"
-                    >
-                      Store cookie
-                    </Button>
-                  </div>
-                ) : null}
+                <div>
+                  <Label
+                    htmlFor="trackr-past-switch"
+                    className="text-sm font-semibold text-zinc-900"
+                  >
+                    Include past activities
+                  </Label>
+                  <p className="text-xs text-zinc-600">
+                    Stored cookies expire after 45 minutes.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-3 lg:w-52">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
-                  size="lg"
+                  onClick={() => {
+                    setCookieInput(cookie);
+                    setIsCookieDialogDismissed(false);
+                    setIsCookieDialogRequested(true);
+                  }}
+                  className="rounded-xl border-emerald-950/10 bg-white/80"
+                >
+                  <KeyRound className="size-4" />
+                  Cookie
+                  {hasStoredCookie ? (
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                  ) : null}
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setIsCreateDialogOpen(true);
                   }}
-                  className="h-12 rounded-2xl border-emerald-950/10 bg-white/80"
+                  className="rounded-xl border-emerald-950/10 bg-white/80"
                 >
                   <ArrowUpRight className="size-4" />
                   Create in Trackr
                 </Button>
-
-                <div className="rounded-2xl border border-emerald-950/10 bg-white/80 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <Label
-                        htmlFor="trackr-past-switch"
-                        className="text-sm font-semibold text-zinc-900"
-                      >
-                        Include past
-                      </Label>
-                      <p className="mt-1 text-xs leading-5 text-zinc-600">
-                        Uses `isPast=true` to pull historical activities.
-                      </p>
-                    </div>
-                    <Switch
-                      id="trackr-past-switch"
-                      checked={includePast}
-                      onCheckedChange={setIncludePast}
-                    />
-                  </div>
-                </div>
-
                 <Button
-                  size="lg"
                   onClick={() => {
                     void handleLoadActivities();
                   }}
                   disabled={isLoading}
-                  className="h-12 rounded-2xl bg-[linear-gradient(135deg,_rgba(38,71,31,1),_rgba(104,128,60,0.94))] text-white shadow-[0_18px_44px_-24px_rgba(53,83,36,0.78)] hover:bg-[linear-gradient(135deg,_rgba(41,76,33,1),_rgba(113,137,65,0.96))]"
+                  className="rounded-xl bg-[linear-gradient(135deg,_rgba(38,71,31,1),_rgba(104,128,60,0.94))] text-white shadow-[0_18px_44px_-24px_rgba(53,83,36,0.78)] hover:bg-[linear-gradient(135deg,_rgba(41,76,33,1),_rgba(113,137,65,0.96))]"
                 >
                   {isLoading ? (
                     <>
@@ -579,7 +613,7 @@ export function TrackrActivitiesPage() {
                     </>
                   ) : (
                     <>
-                      <Database className="size-4" />
+                      <RefreshCw className="size-4" />
                       Fetch activities
                     </>
                   )}
@@ -598,6 +632,83 @@ export function TrackrActivitiesPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog
+        open={isCookieDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) {
+            if (!shouldAutoOpenCookieDialog) {
+              setIsCookieDialogRequested(true);
+            }
+            return;
+          }
+
+          setIsCookieDialogRequested(nextOpen);
+          setIsCookieDialogDismissed(true);
+        }}
+      >
+        <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Connect Trackr Session</DialogTitle>
+            <DialogDescription>
+              Paste a fresh Trackr browser cookie. Saving stores it locally for
+              45 minutes and immediately fetches OPFOR activities.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-950/10 bg-[#fbfaf4] p-4 text-sm text-zinc-700">
+              <p className="font-semibold text-zinc-950">How to get the browser cookie</p>
+              <ol className="mt-3 list-decimal space-y-2 pl-5 leading-6">
+                <li>Open Trackr in your browser and sign in.</li>
+                <li>Open Developer Tools, then go to the Application tab.</li>
+                <li>In the sidebar, expand Cookies and select https://app.trackr.gov.sg.</li>
+                <li>Find trackr.sid and copy its Value.</li>
+              </ol>
+              <p className="mt-3 text-xs leading-5 text-zinc-600">
+                Paste the trackr.sid value here. The full Cookie header also works.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="trackr-cookie" className="text-sm font-semibold text-zinc-900">
+                Browser cookie
+              </Label>
+              <Textarea
+                id="trackr-cookie"
+                value={cookie}
+                onChange={(event) => {
+                  setCookieInput(event.target.value);
+                }}
+                placeholder="trackr.sid=... or paste the full Cookie header"
+                className="min-h-28 rounded-xl border-emerald-950/10 bg-white/80 px-4 py-3 font-mono text-xs shadow-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCookieDialogRequested(false);
+                setIsCookieDialogDismissed(true);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void handleSaveCookieAndLoad();
+              }}
+              disabled={isLoading || !hasCookieValue}
+              className="min-w-32"
+            >
+              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Database className="size-4" />}
+              Save and fetch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-2xl">
