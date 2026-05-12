@@ -1,4 +1,5 @@
 import { formatDateLabel } from "@/lib/date";
+import type { ConductNonPresentReason } from "@/lib/conduct-attendance";
 
 export const CONDUCT_ELIGIBLE_PLATOON_ORDER = [
   "Coy HQ",
@@ -46,6 +47,11 @@ type ConductWhatsappPerson = {
   platoon: string;
 };
 
+type ConductWhatsappAbsentee = ConductWhatsappPerson & {
+  reason: ConductNonPresentReason;
+  remarks?: string;
+};
+
 export type ConductWhatsappNameListMode =
   | "non-participating"
   | "participating"
@@ -66,6 +72,25 @@ function formatPersonnelLabel(person: ConductWhatsappPerson) {
   return `${person.rank} ${person.name}`;
 }
 
+function formatNonParticipatingReason(person: ConductWhatsappAbsentee) {
+  switch (person.reason) {
+    case "MC":
+      return "MC";
+    case "Leave":
+      return "LEAVE";
+    case "Off":
+      return "OFF";
+    case "Fall Out":
+      return "FALL OUT";
+    case "Other":
+      return person.remarks?.trim() || "Other";
+  }
+}
+
+function formatNonParticipatingPersonnelLabel(person: ConductWhatsappAbsentee) {
+  return `${formatPersonnelLabel(person)} (${formatNonParticipatingReason(person)})`;
+}
+
 export function isConductEligiblePlatoon(platoon: string) {
   return CONDUCT_ELIGIBLE_PLATOON_SET.has(platoon);
 }
@@ -79,7 +104,7 @@ export function buildConductWhatsappData({
   conductName: string;
   date: string;
   snapshot: ConductWhatsappPerson[];
-  absentees: ConductWhatsappPerson[];
+  absentees: ConductWhatsappAbsentee[];
 }): ConductWhatsappData {
   const filteredSnapshot = snapshot.filter((person) =>
     isConductEligiblePlatoon(person.platoon),
@@ -110,7 +135,9 @@ export function buildConductWhatsappData({
         participatingStrength: snapshotRows.length - absenteeRows.length,
         nonParticipatingStrength: absenteeRows.length,
         participatingPersonnel: participatingRows.map(formatPersonnelLabel),
-        nonParticipatingPersonnel: absenteeRows.map(formatPersonnelLabel),
+        nonParticipatingPersonnel: absenteeRows.map(
+          formatNonParticipatingPersonnelLabel,
+        ),
       };
     }),
   };
