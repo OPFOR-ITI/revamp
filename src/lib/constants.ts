@@ -1,6 +1,6 @@
 export const STATUS_DEFINITIONS = [
   { value: "MC", affectsParadeState: true, showOutOfCampToggle: false },
-  { value: "RIB", affectsParadeState: true, showOutOfCampToggle: false },
+  { value: "RIB", affectsParadeState: false, showOutOfCampToggle: false },
   { value: "LD", affectsParadeState: false, showOutOfCampToggle: false },
   { value: "EX RMJ", affectsParadeState: false, showOutOfCampToggle: false },
   { value: "OFF", affectsParadeState: true, showOutOfCampToggle: false },
