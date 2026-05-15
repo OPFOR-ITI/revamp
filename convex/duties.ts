@@ -185,6 +185,82 @@ export const listAssignmentsForRange = query({
   },
 });
 
+export const getDutyPointsLeaderboard = query({
+  args: {
+    dutyTypeSearch: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ensureCurrentUser(ctx, {
+      requireApproved: true,
+      requirePermission: "duties.manage",
+    });
+
+    const dutyTypeSearch = normalizeDutyType(args.dutyTypeSearch);
+    const assignments = await ctx.db.query("dutyAssignments").collect();
+    const totalsByPersonnelKey = new Map<
+      string,
+      {
+        personnelKey: string;
+        rank: string;
+        name: string;
+        platoon: string;
+        designation: string;
+        points: number;
+        dutyCount: number;
+      }
+    >();
+    const dutyTypesByNormalized = new Map<string, string>();
+
+    for (const assignment of assignments) {
+      if (!dutyTypesByNormalized.has(assignment.dutyTypeNormalized)) {
+        dutyTypesByNormalized.set(assignment.dutyTypeNormalized, assignment.dutyType);
+      }
+
+      if (
+        dutyTypeSearch &&
+        !assignment.dutyTypeNormalized.includes(dutyTypeSearch)
+      ) {
+        continue;
+      }
+
+      const existing = totalsByPersonnelKey.get(assignment.personnelKey);
+
+      if (existing) {
+        existing.points += assignment.points;
+        existing.dutyCount += 1;
+      } else {
+        totalsByPersonnelKey.set(assignment.personnelKey, {
+          personnelKey: assignment.personnelKey,
+          rank: assignment.rank,
+          name: assignment.name,
+          platoon: assignment.platoon,
+          designation: assignment.designation,
+          points: assignment.points,
+          dutyCount: 1,
+        });
+      }
+    }
+
+    const rankings = Array.from(totalsByPersonnelKey.values()).sort(
+      (left, right) =>
+        right.points - left.points ||
+        right.dutyCount - left.dutyCount ||
+        left.rank.localeCompare(right.rank) ||
+        left.name.localeCompare(right.name),
+    );
+    const dutyTypes = Array.from(dutyTypesByNormalized.values()).sort((left, right) =>
+      left.localeCompare(right),
+    );
+
+    return {
+      rankings,
+      dutyTypes,
+      selectedDutyType:
+        dutyTypeSearch ? dutyTypesByNormalized.get(dutyTypeSearch) ?? null : null,
+    };
+  },
+});
+
 export const createAssignment = mutation({
   args: {
     personnelKey: v.string(),

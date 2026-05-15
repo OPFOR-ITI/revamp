@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Loader2,
   RotateCcw,
+  Trophy,
   Trash2,
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
@@ -98,6 +99,20 @@ import {
 } from "@/lib/personnel";
 
 type PersonnelRouteError = { error?: { code?: string; message?: string } };
+
+type DutyPointsLeaderboard = {
+  rankings: {
+    personnelKey: string;
+    rank: string;
+    name: string;
+    platoon: string;
+    designation: string;
+    points: number;
+    dutyCount: number;
+  }[];
+  dutyTypes: string[];
+  selectedDutyType: string | null;
+};
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -242,6 +257,158 @@ function findMatchingAssignmentForSelection(
 
   return assignments.find(
     (candidate) => getDutyAssignmentSelectionKey(candidate) === selectionKey,
+  );
+}
+
+function formatPointsLabel(points: number) {
+  return `${Number.isInteger(points) ? points : points.toFixed(1)} pts`;
+}
+
+function getDutyPresetFromSearch(value: string): DutyPreset | null {
+  const normalizedSearch = normalizeDutyType(value);
+
+  return (
+    DUTY_PRESETS.find(
+      (dutyPreset) => normalizeDutyType(dutyPreset) === normalizedSearch,
+    ) ?? null
+  );
+}
+
+function DutyPointsDialog({
+  open,
+  onOpenChange,
+  personnel,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  personnel: PersonnelRecord[];
+}) {
+  const [selectedDutyType, setSelectedDutyType] = useState<string | null>(null);
+  const leaderboard = useQuery(
+    api.duties.getDutyPointsLeaderboard,
+    selectedDutyType ? { dutyTypeSearch: selectedDutyType } : "skip",
+  ) as DutyPointsLeaderboard | undefined;
+  const dutyTypes = DUTY_PRESETS;
+  const effectiveDutyType = selectedDutyType ?? "";
+  const eligibleDutyPreset = getDutyPresetFromSearch(effectiveDutyType);
+  const statsByPersonnelKey = new Map(
+    (leaderboard?.rankings ?? []).map((entry) => [entry.personnelKey, entry] as const),
+  );
+  const roster = personnel
+    .filter((person) =>
+      eligibleDutyPreset
+        ? isEligibleForDuty({
+            dutyPreset: eligibleDutyPreset,
+            rank: person.rank,
+            designation: person.designation,
+          })
+        : true,
+    )
+    .map((person) => {
+      const stats = statsByPersonnelKey.get(person.personnelKey);
+
+      return {
+        personnelKey: person.personnelKey,
+        rank: person.rank,
+        name: getPersonnelDisplayName(person),
+        platoon: person.platoon,
+        designation: person.designation,
+        points: stats?.points ?? 0,
+        dutyCount: stats?.dutyCount ?? 0,
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.points - left.points ||
+        right.dutyCount - left.dutyCount ||
+        left.rank.localeCompare(right.rank) ||
+        left.name.localeCompare(right.name),
+    );
+  const totalPoints = roster.reduce((sum, person) => sum + person.points, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[calc(100svh-1rem)] overflow-hidden p-0 sm:max-w-2xl">
+        <div className="border-b border-zinc-200 px-4 pb-4 pt-5 sm:px-5">
+          <DialogHeader>
+            <DialogTitle>Duty Points</DialogTitle>
+            <DialogDescription>
+              {eligibleDutyPreset
+                ? `Ranked for personnel eligible to do ${eligibleDutyPreset}.`
+                : "Select a duty type to load its leaderboard."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+          {dutyTypes.length ? (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {dutyTypes.map((dutyType) => (
+                <Button
+                  key={dutyType}
+                  type="button"
+                  variant={selectedDutyType === dutyType ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 shrink-0"
+                  onClick={() => setSelectedDutyType(dutyType)}
+                >
+                  {dutyType}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Trophy className="size-4 text-emerald-700" />
+              <span>{formatPointsLabel(totalPoints)} total</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-h-[60svh] overflow-y-auto px-4 py-3 sm:px-5">
+          {!selectedDutyType ? (
+            <div className="rounded-lg border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-muted-foreground">
+              Select a duty type to view points.
+            </div>
+          ) : leaderboard === undefined ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 rounded-lg" />
+              ))}
+            </div>
+          ) : roster.length ? (
+            <div className="divide-y divide-zinc-100">
+              {roster.map((person, index) => (
+                <div
+                  key={person.personnelKey}
+                  className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 py-2.5"
+                >
+                  <span className="text-right text-xs tabular-nums text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-zinc-950">
+                      {person.rank} {person.name}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {person.platoon} / {person.designation} / {person.dutyCount}
+                      {person.dutyCount === 1 ? " duty" : " duties"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold tabular-nums text-zinc-950">
+                      {formatPointsLabel(person.points)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-muted-foreground">
+              No personnel loaded.
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -966,6 +1133,7 @@ export function DutyCalendarPage({
   const [selectedAssignment, setSelectedAssignment] =
     useState<DutyAssignmentDoc | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isPointsDialogOpen, setIsPointsDialogOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<Set<DutyColorKey>>(
     () => new Set(DEFAULT_DUTY_FILTER_KEYS),
   );
@@ -1150,13 +1318,24 @@ export function DutyCalendarPage({
               <ChevronRight className="size-4" />
             </Button>
             {canManageAssignments ? (
-              <Button
-                type="button"
-                onClick={() => openCreateDialog(getTodaySingaporeDateString())}
-                disabled={!canOpenAssignmentEditor}
-              >
-                Assign duty
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPointsDialogOpen(true)}
+                  disabled={isPersonnelLoading || Boolean(personnelError)}
+                >
+                  <Trophy className="size-4" />
+                  Duty points
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => openCreateDialog(getTodaySingaporeDateString())}
+                  disabled={!canOpenAssignmentEditor}
+                >
+                  Assign duty
+                </Button>
+              </>
             ) : (
               <Badge variant="outline">View only</Badge>
             )}
@@ -1366,26 +1545,33 @@ export function DutyCalendarPage({
       </Card>
 
       {canManageAssignments ? (
-        <DutyAssignmentDialog
-          key={`${selectedAssignment?._id ?? selectedDate}-${isDialogOpen ? "open" : "closed"}`}
-          open={isDialogOpen}
-          onOpenChange={(open) => {
-            setIsDialogOpen(open);
+        <>
+          <DutyPointsDialog
+            open={isPointsDialogOpen}
+            onOpenChange={setIsPointsDialogOpen}
+            personnel={personnel}
+          />
+          <DutyAssignmentDialog
+            key={`${selectedAssignment?._id ?? selectedDate}-${isDialogOpen ? "open" : "closed"}`}
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
 
-            if (!open) {
-              setSelectedAssignment(null);
-              const savedPosition = scrollPositionRef.current;
-              requestAnimationFrame(() => {
+              if (!open) {
+                setSelectedAssignment(null);
+                const savedPosition = scrollPositionRef.current;
                 requestAnimationFrame(() => {
-                  window.scrollTo(0, savedPosition);
+                  requestAnimationFrame(() => {
+                    window.scrollTo(0, savedPosition);
+                  });
                 });
-              });
-            }
-          }}
-          assignment={selectedAssignment}
-          initialDate={selectedDate}
-          personnel={personnel}
-        />
+              }
+            }}
+            assignment={selectedAssignment}
+            initialDate={selectedDate}
+            personnel={personnel}
+          />
+        </>
       ) : null}
     </>
   );
