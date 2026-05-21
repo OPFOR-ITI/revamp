@@ -514,8 +514,8 @@ export function TrackrActivitiesPage() {
       <section className="grid gap-4">
         <Card className="border-emerald-950/10 bg-[linear-gradient(135deg,rgba(255,250,237,0.96),rgba(235,245,229,0.92))] shadow-[0_24px_70px_-42px_rgba(52,87,43,0.55)]">
           <CardHeader className="gap-3 border-b border-emerald-950/8 pb-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+              <div className="min-w-0">
                 <Badge className="border-none bg-emerald-950 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.26em] text-emerald-50">
                   Trackr intake
                 </Badge>
@@ -523,47 +523,35 @@ export function TrackrActivitiesPage() {
                   OPFOR conduct importer
                 </CardTitle>
                 <CardDescription className="mt-2 max-w-xl text-sm leading-6 text-zinc-700">
-                  Live Trackr OPFOR results, kept lean. Cookie setup now happens
-                  only when the session needs it.
+                  Live Trackr OPFOR results, kept lean.
                 </CardDescription>
               </div>
-              <div className="flex flex-col items-start gap-2 sm:items-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsHaCurrencyDialogOpen(true);
-                  }}
-                  className="rounded-xl border-emerald-950/10 bg-white/80"
-                >
-                  <Award className="size-4" />
-                  HA Currency
-                </Button>
-                <div className="grid grid-cols-2 gap-2 align-center sm:grid-cols-3">
-                  <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                      Session
-                    </p>
-                    <p className="mt-1 font-mono text-xs text-zinc-700">
-                      {hasCookieValue ? "Cookie ready" : "Needs cookie"}
-                    </p>
+
+              <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:w-[620px]">
+                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                    Session
+                  </p>
+                  <p className="mt-1 font-mono text-xs text-zinc-700">
+                    {hasCookieValue ? "Cookie ready" : "Needs cookie"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
+                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                    <Database className="size-3.5" />
+                    Loaded
                   </div>
-                  <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
-                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                      <Database className="size-3.5" />
-                      Loaded
-                    </div>
-                    <p className="mt-1 font-mono text-xs text-zinc-700">
-                      {trackrActivities.length}
-                    </p>
-                  </div>
-                  <div className="col-span-2 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm sm:col-span-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                      Source
-                    </p>
-                    <p className="mt-1 truncate font-mono text-xs text-zinc-700">
-                      /api/v1/activities/units
-                    </p>
-                  </div>
+                  <p className="mt-1 font-mono text-xs text-zinc-700">
+                    {trackrActivities.length}
+                  </p>
+                </div>
+                <div className="col-span-2 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm sm:col-span-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                    Source
+                  </p>
+                  <p className="mt-1 truncate font-mono text-xs text-zinc-700">
+                    /api/v1/activities/units
+                  </p>
                 </div>
               </div>
             </div>
@@ -609,6 +597,16 @@ export function TrackrActivitiesPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
+                    setIsHaCurrencyDialogOpen(true);
+                  }}
+                  className="rounded-xl border-emerald-950/10 bg-white/80"
+                >
+                  <Award className="size-4" />
+                  HA Currency
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
                     setIsCreateDialogOpen(true);
                   }}
                   className="rounded-xl border-emerald-950/10 bg-white/80"
@@ -631,7 +629,7 @@ export function TrackrActivitiesPage() {
                   ) : (
                     <>
                       <RefreshCw className="size-4" />
-                      Fetch activities
+                      Fetch
                     </>
                   )}
                 </Button>
@@ -664,7 +662,7 @@ export function TrackrActivitiesPage() {
           setIsCookieDialogDismissed(true);
         }}
       >
-        <DialogContent className="max-h-[calc(100svh-1rem)] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[calc(100svh-1rem)] overflow-x-hidden overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Connect Trackr Session</DialogTitle>
             <DialogDescription>
@@ -694,11 +692,12 @@ export function TrackrActivitiesPage() {
               <Textarea
                 id="trackr-cookie"
                 value={cookie}
+                wrap="soft"
                 onChange={(event) => {
                   setCookieInput(event.target.value);
                 }}
                 placeholder="trackr.sid=... or paste the full Cookie header"
-                className="min-h-28 rounded-xl border-emerald-950/10 bg-white/80 px-4 py-3 font-mono text-xs shadow-sm"
+                className="min-h-28 min-w-0 max-w-full field-sizing-fixed resize-y overflow-x-hidden rounded-xl border-emerald-950/10 bg-white/80 px-4 py-3 font-mono text-xs break-all whitespace-pre-wrap shadow-sm"
               />
             </div>
           </div>

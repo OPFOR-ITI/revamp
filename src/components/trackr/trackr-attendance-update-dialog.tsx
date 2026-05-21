@@ -458,9 +458,15 @@ export function TrackrAttendanceUpdateDialog({
               >
                 <SelectTrigger
                   id="trackr-review-conduct"
-                  className="rounded-2xl border-emerald-950/10 bg-white/85"
+                  className="w-full rounded-2xl border-emerald-950/10 bg-white/85"
                 >
-                  <SelectValue placeholder="Select a local conduct" />
+                  {selectedConduct ? (
+                    <span className="line-clamp-1 text-left">
+                      {formatConductLabel(selectedConduct)}
+                    </span>
+                  ) : (
+                    <SelectValue placeholder="Select a local conduct" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {sourceConducts.map((conduct) => (
@@ -546,6 +552,12 @@ export function TrackrAttendanceUpdateDialog({
           {!isReviewLoading && personnelError ? (
             <div className="rounded-[28px] border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950">
               Personnel alias lookup is unavailable: {personnelError}
+            </div>
+          ) : null}
+
+          {!isReviewLoading && isPersonnelLoading ? (
+            <div className="rounded-[28px] border border-emerald-950/10 bg-white/80 px-4 py-4 text-sm text-zinc-600">
+              Loading personnel aliases for Trackr name matching...
             </div>
           ) : null}
 

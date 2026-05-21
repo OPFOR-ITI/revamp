@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Award,
+  ChevronDown,
   Loader2,
   RefreshCw,
   Search,
@@ -13,6 +17,7 @@ import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -23,11 +28,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -48,9 +52,6 @@ import {
 } from "@/lib/trackr-schema";
 import { cn } from "@/lib/utils";
 
-const ALL_BRACKETS_VALUE = "__all_brackets__";
-const ALL_UNITS_VALUE = "__all_units__";
-
 const singaporeDateStringFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SINGAPORE_TIME_ZONE,
   year: "numeric",
@@ -66,7 +67,22 @@ const fullDateFormatter = new Intl.DateTimeFormat("en-SG", {
 });
 
 type HaCurrencyBracket = "current" | "expiring" | "expired" | "not-subscribed";
-type HaCurrencyBracketFilter = typeof ALL_BRACKETS_VALUE | HaCurrencyBracket;
+type SelectableHaCurrencyBracket = Exclude<HaCurrencyBracket, "not-subscribed">;
+type HaCurrencySortKey = "name" | "unit" | "currency";
+type SortDirection = "asc" | "desc";
+
+const CURRENCY_FILTER_OPTIONS: SelectableHaCurrencyBracket[] = [
+  "current",
+  "expiring",
+  "expired",
+];
+
+const SORT_CURRENCY_RANK: Record<HaCurrencyBracket, number> = {
+  current: 0,
+  expiring: 1,
+  expired: 2,
+  "not-subscribed": 3,
+};
 
 const routeErrorSchema = z.object({
   error: z
@@ -228,6 +244,75 @@ function sortHaCurrencyUsers(users: TrackrHaCurrencyUser[]) {
   });
 }
 
+function sortHaCurrencyUsersByKey(
+  users: TrackrHaCurrencyUser[],
+  key: HaCurrencySortKey | null,
+  direction: SortDirection,
+) {
+  if (!key) {
+    return sortHaCurrencyUsers(users);
+  }
+
+  const directionMultiplier = direction === "asc" ? 1 : -1;
+
+  return [...users].sort((left, right) => {
+    let compare = 0;
+
+    if (key === "name") {
+      compare = left.name.localeCompare(right.name);
+    }
+
+    if (key === "unit") {
+      compare = left.unitName.localeCompare(right.unitName);
+    }
+
+    if (key === "currency") {
+      compare =
+        SORT_CURRENCY_RANK[getHaCurrencyBracket(left)] -
+        SORT_CURRENCY_RANK[getHaCurrencyBracket(right)];
+    }
+
+    if (compare !== 0) {
+      return compare * directionMultiplier;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function getSortAriaLabel(
+  label: string,
+  key: HaCurrencySortKey,
+  activeKey: HaCurrencySortKey | null,
+  direction: SortDirection,
+) {
+  if (activeKey !== key) {
+    return `Sort by ${label} ascending`;
+  }
+
+  return `Sort by ${label} ${direction === "asc" ? "descending" : "ascending"}`;
+}
+
+function SortIcon({
+  column,
+  activeColumn,
+  direction,
+}: {
+  column: HaCurrencySortKey;
+  activeColumn: HaCurrencySortKey | null;
+  direction: SortDirection;
+}) {
+  if (column !== activeColumn) {
+    return <ArrowUpDown className="size-3.5 text-zinc-400" />;
+  }
+
+  return direction === "asc" ? (
+    <ArrowUp className="size-3.5 text-emerald-800" />
+  ) : (
+    <ArrowDown className="size-3.5 text-emerald-800" />
+  );
+}
+
 export function TrackrHaCurrencyDialog({
   open,
   onOpenChange,
@@ -246,9 +331,12 @@ export function TrackrHaCurrencyDialog({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [unitFilter, setUnitFilter] = useState(ALL_UNITS_VALUE);
-  const [bracketFilter, setBracketFilter] =
-    useState<HaCurrencyBracketFilter>(ALL_BRACKETS_VALUE);
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
+  const [selectedBrackets, setSelectedBrackets] = useState<
+    SelectableHaCurrencyBracket[]
+  >([]);
+  const [sortKey, setSortKey] = useState<HaCurrencySortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
   const handleLoadCurrency = useCallback(async () => {
     const requestCookie = cookie.trim();
@@ -316,8 +404,10 @@ export function TrackrHaCurrencyDialog({
 
   useEffect(() => {
     setSearchTerm("");
-    setUnitFilter(ALL_UNITS_VALUE);
-    setBracketFilter(ALL_BRACKETS_VALUE);
+    setSelectedUnits([]);
+    setSelectedBrackets([]);
+    setSortKey(null);
+    setSortDirection("asc");
   }, [unitId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -347,14 +437,17 @@ export function TrackrHaCurrencyDialog({
   const filteredUsers = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
 
-    return sortHaCurrencyUsers(currencyData?.users ?? []).filter((user) => {
-      if (unitFilter !== ALL_UNITS_VALUE && user.unitName !== unitFilter) {
+    const users = (currencyData?.users ?? []).filter((user) => {
+      if (selectedUnits.length > 0 && !selectedUnits.includes(user.unitName)) {
         return false;
       }
 
       const bracket = getHaCurrencyBracket(user);
 
-      if (bracketFilter !== ALL_BRACKETS_VALUE && bracket !== bracketFilter) {
+      if (
+        selectedBrackets.length > 0 &&
+        !selectedBrackets.includes(bracket as SelectableHaCurrencyBracket)
+      ) {
         return false;
       }
 
@@ -368,18 +461,59 @@ export function TrackrHaCurrencyDialog({
         user.status.toLowerCase().includes(normalizedSearch)
       );
     });
-  }, [bracketFilter, currencyData, searchTerm, unitFilter]);
+
+    return sortHaCurrencyUsersByKey(users, sortKey, sortDirection);
+  }, [
+    currencyData,
+    searchTerm,
+    selectedBrackets,
+    selectedUnits,
+    sortDirection,
+    sortKey,
+  ]);
 
   const displayedUnitName = currencyData?.unitName ?? unitName;
   const hasActiveFilters =
     searchTerm.trim() !== "" ||
-    unitFilter !== ALL_UNITS_VALUE ||
-    bracketFilter !== ALL_BRACKETS_VALUE;
-  const selectBracketFilter = (bracket: HaCurrencyBracket) => {
-    setBracketFilter((current) =>
-      current === bracket ? ALL_BRACKETS_VALUE : bracket,
+    selectedUnits.length > 0 ||
+    selectedBrackets.length > 0;
+  const toggleUnitFilter = (unit: string) => {
+    setSelectedUnits((current) =>
+      current.includes(unit)
+        ? current.filter((value) => value !== unit)
+        : [...current, unit],
     );
   };
+  const toggleBracketFilter = (bracket: SelectableHaCurrencyBracket) => {
+    setSelectedBrackets((current) =>
+      current.includes(bracket)
+        ? current.filter((value) => value !== bracket)
+        : [...current, bracket],
+    );
+  };
+  const toggleSort = (key: HaCurrencySortKey) => {
+    if (sortKey === key) {
+      setSortDirection((currentDirection) =>
+        currentDirection === "asc" ? "desc" : "asc",
+      );
+      return;
+    }
+
+    setSortDirection("asc");
+    setSortKey(key);
+  };
+  const unitFilterLabel =
+    selectedUnits.length === 0
+      ? "All units"
+      : selectedUnits.length === 1
+        ? selectedUnits[0]
+        : `${selectedUnits.length} units`;
+  const currencyFilterLabel =
+    selectedBrackets.length === 0
+      ? "All currency"
+      : selectedBrackets.length === 1
+        ? getBracketLabel(selectedBrackets[0])
+        : `${selectedBrackets.length} currency tags`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -392,7 +526,7 @@ export function TrackrHaCurrencyDialog({
                 HA Currency
               </DialogTitle>
               <DialogDescription className="mt-2 max-w-2xl leading-6">
-                {displayedUnitName || "OPFOR"} currency loaded from Trackr unit{" "}
+                {displayedUnitName || "OPFOR"} currency loaded from Trackr unit: {" "}
                 <span className="font-mono text-xs text-zinc-600">
                   {unitId || "pending"}
                 </span>
@@ -418,16 +552,16 @@ export function TrackrHaCurrencyDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-3">
             <button
               type="button"
-              aria-pressed={bracketFilter === "current"}
+              aria-pressed={selectedBrackets.includes("current")}
               onClick={() => {
-                selectBracketFilter("current");
+                toggleBracketFilter("current");
               }}
               className={cn(
                 "rounded-lg border border-emerald-950/10 bg-white/80 p-3 text-left shadow-sm transition hover:border-emerald-700/30 hover:bg-emerald-50/50",
-                bracketFilter === "current" &&
+                selectedBrackets.includes("current") &&
                   "border-emerald-700/40 bg-emerald-50 ring-2 ring-emerald-700/15",
               )}
             >
@@ -441,13 +575,13 @@ export function TrackrHaCurrencyDialog({
             </button>
             <button
               type="button"
-              aria-pressed={bracketFilter === "expiring"}
+              aria-pressed={selectedBrackets.includes("expiring")}
               onClick={() => {
-                selectBracketFilter("expiring");
+                toggleBracketFilter("expiring");
               }}
               className={cn(
                 "rounded-lg border border-amber-950/10 bg-white/80 p-3 text-left shadow-sm transition hover:border-amber-700/30 hover:bg-amber-50/60",
-                bracketFilter === "expiring" &&
+                selectedBrackets.includes("expiring") &&
                   "border-amber-700/40 bg-amber-50 ring-2 ring-amber-700/15",
               )}
             >
@@ -461,13 +595,13 @@ export function TrackrHaCurrencyDialog({
             </button>
             <button
               type="button"
-              aria-pressed={bracketFilter === "expired"}
+              aria-pressed={selectedBrackets.includes("expired")}
               onClick={() => {
-                selectBracketFilter("expired");
+                toggleBracketFilter("expired");
               }}
               className={cn(
                 "rounded-lg border border-red-950/10 bg-white/80 p-3 text-left shadow-sm transition hover:border-red-700/30 hover:bg-red-50/60",
-                bracketFilter === "expired" &&
+                selectedBrackets.includes("expired") &&
                   "border-red-700/40 bg-red-50 ring-2 ring-red-700/15",
               )}
             >
@@ -477,30 +611,16 @@ export function TrackrHaCurrencyDialog({
               </p>
               <p className="mt-1 text-xs text-zinc-600">Past expiry date</p>
             </button>
-            <button
-              type="button"
-              aria-pressed={bracketFilter === "not-subscribed"}
-              onClick={() => {
-                selectBracketFilter("not-subscribed");
-              }}
-              className={cn(
-                "rounded-lg border border-zinc-950/10 bg-white/80 p-3 text-left shadow-sm transition hover:border-zinc-700/30 hover:bg-zinc-50",
-                bracketFilter === "not-subscribed" &&
-                  "border-zinc-700/40 bg-zinc-50 ring-2 ring-zinc-700/15",
-              )}
-            >
-              <p className="text-xs font-semibold text-zinc-600">
-                Not subscribed
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-zinc-800">
-                {currencyData?.stats.numNotSubscribed ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-zinc-600">No active HA record</p>
-            </button>
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-emerald-950/10 bg-white/80 p-2 shadow-sm">
-            <div className="grid min-w-[820px] grid-cols-[1.35fr_0.95fr_0.95fr_2.5rem] items-center gap-2">
+            <div
+              className="grid min-w-[820px] items-center gap-2"
+              style={{
+                gridTemplateColumns:
+                  "minmax(22rem,1fr) minmax(11rem,14rem) minmax(11rem,14rem) 2.25rem",
+              }}
+            >
               <div className="relative">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
                 <Input
@@ -514,64 +634,90 @@ export function TrackrHaCurrencyDialog({
                 />
               </div>
 
-              <Select
-                value={unitFilter}
-                onValueChange={(value) => {
-                  setUnitFilter(value ?? ALL_UNITS_VALUE);
-                }}
-              >
-                <SelectTrigger
-                  aria-label="Filter by unit"
-                  className="h-9 w-full rounded-lg border-emerald-950/10 bg-white"
-                >
-                  <span className="truncate text-left">
-                    {unitFilter === ALL_UNITS_VALUE ? "All units" : unitFilter}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_UNITS_VALUE}>All units</SelectItem>
-                  {unitOptions.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-emerald-950/10 bg-white px-3 text-sm text-zinc-800 transition hover:bg-zinc-50">
+                  <span className="truncate text-left">{unitFilterLabel}</span>
+                  <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="max-h-80 w-72 overflow-y-auto p-2">
+                  <div className="flex items-center justify-between gap-2 border-b border-zinc-200/70 px-1 pb-2">
+                    <p className="text-xs font-semibold text-zinc-600">Units</p>
+                    {selectedUnits.length > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => {
+                          setSelectedUnits([]);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 grid gap-1">
+                    {unitOptions.map((option) => (
+                      <label
+                        key={option}
+                        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-50"
+                      >
+                        <Checkbox
+                          checked={selectedUnits.includes(option)}
+                          onCheckedChange={() => {
+                            toggleUnitFilter(option);
+                          }}
+                        />
+                        <span className="truncate">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-              <Select
-                value={bracketFilter}
-                onValueChange={(value) => {
-                  setBracketFilter(
-                    (value ?? ALL_BRACKETS_VALUE) as HaCurrencyBracketFilter,
-                  );
-                }}
-              >
-                <SelectTrigger
-                  aria-label="Filter by currency"
-                  className="h-9 w-full rounded-lg border-emerald-950/10 bg-white"
-                >
-                  <span className="truncate text-left">
-                    {bracketFilter === ALL_BRACKETS_VALUE
-                      ? "All currency"
-                      : getBracketLabel(bracketFilter)}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_BRACKETS_VALUE}>All currency</SelectItem>
-                  <SelectItem value="current">
-                    Current ({bracketCounts.current})
-                  </SelectItem>
-                  <SelectItem value="expiring">
-                    Expiring Soon ({bracketCounts.expiring})
-                  </SelectItem>
-                  <SelectItem value="expired">
-                    Expired ({bracketCounts.expired})
-                  </SelectItem>
-                  <SelectItem value="not-subscribed">
-                    Not subscribed ({bracketCounts["not-subscribed"]})
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-emerald-950/10 bg-white px-3 text-sm text-zinc-800 transition hover:bg-zinc-50">
+                  <span className="truncate text-left">{currencyFilterLabel}</span>
+                  <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-64 p-2">
+                  <div className="flex items-center justify-between gap-2 border-b border-zinc-200/70 px-1 pb-2">
+                    <p className="text-xs font-semibold text-zinc-600">
+                      Currency
+                    </p>
+                    {selectedBrackets.length > 0 ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => {
+                          setSelectedBrackets([]);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 grid gap-1">
+                    {CURRENCY_FILTER_OPTIONS.map((option) => (
+                      <label
+                        key={option}
+                        className="flex min-h-8 cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-zinc-800 hover:bg-zinc-50"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Checkbox
+                            checked={selectedBrackets.includes(option)}
+                            onCheckedChange={() => {
+                              toggleBracketFilter(option);
+                            }}
+                          />
+                          <span className="truncate">{getBracketLabel(option)}</span>
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {bracketCounts[option]}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
               <Button
                 variant="outline"
@@ -580,8 +726,8 @@ export function TrackrHaCurrencyDialog({
                 title="Clear filters"
                 onClick={() => {
                   setSearchTerm("");
-                  setUnitFilter(ALL_UNITS_VALUE);
-                  setBracketFilter(ALL_BRACKETS_VALUE);
+                  setSelectedUnits([]);
+                  setSelectedBrackets([]);
                 }}
                 disabled={!hasActiveFilters}
                 className="size-9 rounded-lg border-emerald-950/10 bg-white"
@@ -602,22 +748,106 @@ export function TrackrHaCurrencyDialog({
 
           <div className="overflow-hidden rounded-xl border border-emerald-950/10 bg-white/85 shadow-sm">
             <div className="flex flex-col gap-1 border-b border-emerald-950/8 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-semibold text-zinc-950">
-                Troopers
-              </p>
               <p className="text-xs text-zinc-600">
                 Showing {filteredUsers.length} of {currencyData?.users.length ?? 0}
               </p>
             </div>
             <div className="overflow-x-auto">
-              <Table className="min-w-[760px]">
+              <Table className="min-w-[840px]">
                 <TableHeader>
                   <TableRow className="border-emerald-950/8">
-                    <TableHead className="py-3 text-xs font-semibold text-emerald-900/65">
-                      Name
+                    <TableHead
+                      aria-sort={
+                        sortKey === "name"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-3 text-xs font-semibold text-emerald-900/65"
+                    >
+                      <button
+                        type="button"
+                        aria-label={getSortAriaLabel(
+                          "name",
+                          "name",
+                          sortKey,
+                          sortDirection,
+                        )}
+                        onClick={() => {
+                          toggleSort("name");
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-emerald-50 hover:text-emerald-950"
+                      >
+                        Name
+                        <SortIcon
+                          column="name"
+                          activeColumn={sortKey}
+                          direction={sortDirection}
+                        />
+                      </button>
                     </TableHead>
-                    <TableHead className="py-3 text-xs font-semibold text-emerald-900/65">
-                      Currency
+                    <TableHead
+                      aria-sort={
+                        sortKey === "unit"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-3 text-xs font-semibold text-emerald-900/65"
+                    >
+                      <button
+                        type="button"
+                        aria-label={getSortAriaLabel(
+                          "unit",
+                          "unit",
+                          sortKey,
+                          sortDirection,
+                        )}
+                        onClick={() => {
+                          toggleSort("unit");
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-emerald-50 hover:text-emerald-950"
+                      >
+                        Unit
+                        <SortIcon
+                          column="unit"
+                          activeColumn={sortKey}
+                          direction={sortDirection}
+                        />
+                      </button>
+                    </TableHead>
+                    <TableHead
+                      aria-sort={
+                        sortKey === "currency"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-3 text-xs font-semibold text-emerald-900/65"
+                    >
+                      <button
+                        type="button"
+                        aria-label={getSortAriaLabel(
+                          "currency",
+                          "currency",
+                          sortKey,
+                          sortDirection,
+                        )}
+                        onClick={() => {
+                          toggleSort("currency");
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-emerald-50 hover:text-emerald-950"
+                      >
+                        Currency
+                        <SortIcon
+                          column="currency"
+                          activeColumn={sortKey}
+                          direction={sortDirection}
+                        />
+                      </button>
                     </TableHead>
                     <TableHead className="py-3 text-xs font-semibold text-emerald-900/65">
                       Expires on
@@ -627,7 +857,7 @@ export function TrackrHaCurrencyDialog({
                 <TableBody>
                   {isLoading && !currencyData ? (
                     <TableRow className="border-emerald-950/8">
-                      <TableCell colSpan={3} className="py-12 text-center text-sm text-zinc-600">
+                      <TableCell colSpan={4} className="py-12 text-center text-sm text-zinc-600">
                         Loading HA currency...
                       </TableCell>
                     </TableRow>
@@ -638,13 +868,13 @@ export function TrackrHaCurrencyDialog({
 
                       return (
                         <TableRow key={user.id} className="border-emerald-950/8">
-                          <TableCell className="py-3 align-top">
+                          <TableCell className="py-3 pl-6 align-center">
                             <p className="font-medium text-zinc-950">{user.name}</p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {user.unitName}
-                            </p>
                           </TableCell>
-                          <TableCell className="py-3 align-top">
+                          <TableCell className="py-3 align-center text-sm text-zinc-700">
+                            {user.unitName}
+                          </TableCell>
+                          <TableCell className="py-3 align-center">
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge
                                 variant="outline"
@@ -667,7 +897,7 @@ export function TrackrHaCurrencyDialog({
                     })
                   ) : (
                     <TableRow className="border-emerald-950/8">
-                      <TableCell colSpan={3} className="py-12 text-center text-sm text-zinc-600">
+                      <TableCell colSpan={4} className="py-12 text-center text-sm text-zinc-600">
                         {currencyData
                           ? "No troopers match the current filters."
                           : "Open this after fetching OPFOR activities to load HA currency."}
