@@ -79,6 +79,68 @@ export const trackrHaCurrencyUnitResponseSchema = z.object({
   users: z.array(trackrHaCurrencyUserSchema),
 });
 
+export const trackrHaCurrencyRecommendationDetailSchema = z
+  .object({
+    detector: z.string(),
+    daysRemaining: z.number().int().nullable().optional(),
+    periodsRemaining: z.number().int().nullable().optional(),
+    breakDaysRemaining: z.number().int().nullable().optional(),
+    maxConsecutiveBreakDays: z.number().int().nullable().optional(),
+    startDate: z.string().nullable().optional(),
+    earliestEndDate: z.string().nullable().optional(),
+    latestEndDate: z.string().nullable().optional(),
+    validPeriodsWindow: z.array(z.number().int()).optional(),
+  })
+  .passthrough();
+
+export const trackrHaCurrencyUserDetailResponseSchema = z
+  .object({
+    user: z
+      .object({
+        id: z.string().uuid("Trackr user id must be a valid UUID."),
+        name: z.string(),
+        enlistmentDate: z.string().nullable().optional(),
+        systemName: z.string().nullable().optional(),
+      })
+      .passthrough(),
+    doubleHaEligibleDate: z.string().nullable().optional(),
+    awardedDate: z.string().nullable().optional(),
+    qualifyingProgramme: z.string().nullable().optional(),
+    expiryDate: z.string().nullable().optional(),
+    recommendations: z
+      .object({
+        type: z.string().optional(),
+        recommendationDetails: z.array(trackrHaCurrencyRecommendationDetailSchema),
+      })
+      .passthrough()
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+export const trackrUserActivitySchema = z
+  .object({
+    id: z.string().uuid("Trackr activity id must be a valid UUID."),
+    date: z.string(),
+    name: z.string(),
+    category: trackrCategorySchema,
+    description: z.string().nullable(),
+    conductingUnit: trackrUnitSchema,
+    periods: z.number(),
+    attendanceStatus: z
+      .object({
+        id: trackrMixedIdSchema,
+        name: z.string(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export const trackrUserActivitiesResponseSchema = z.object({
+  activities: z.array(trackrUserActivitySchema),
+});
+
 export const trackrUsersQueryPayloadSchema = z.object({
   unitIds: z
     .array(z.string().uuid("Each Trackr unitId must be a valid UUID."))
@@ -210,6 +272,16 @@ export type TrackrHaCurrencyStats = z.infer<
 export type TrackrHaCurrencyUser = z.infer<typeof trackrHaCurrencyUserSchema>;
 export type TrackrHaCurrencyUnitResponse = z.infer<
   typeof trackrHaCurrencyUnitResponseSchema
+>;
+export type TrackrHaCurrencyRecommendationDetail = z.infer<
+  typeof trackrHaCurrencyRecommendationDetailSchema
+>;
+export type TrackrHaCurrencyUserDetailResponse = z.infer<
+  typeof trackrHaCurrencyUserDetailResponseSchema
+>;
+export type TrackrUserActivity = z.infer<typeof trackrUserActivitySchema>;
+export type TrackrUserActivitiesResponse = z.infer<
+  typeof trackrUserActivitiesResponseSchema
 >;
 export type TrackrUsersQueryPayload = z.infer<
   typeof trackrUsersQueryPayloadSchema

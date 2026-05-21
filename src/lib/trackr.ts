@@ -8,7 +8,9 @@ import {
   trackrCreateActivitiesPayloadSchema,
   trackrCreateActivitiesResponseSchema,
   trackrHaCurrencyUnitResponseSchema,
+  trackrHaCurrencyUserDetailResponseSchema,
   trackrStatusesResponseSchema,
+  trackrUserActivitiesResponseSchema,
   trackrUsersQueryPayloadSchema,
   trackrUsersQueryResponseSchema,
   type TrackrAttendancePatchPayload,
@@ -276,6 +278,51 @@ export class TrackrClient {
     );
 
     return trackrHaCurrencyUnitResponseSchema.parse(response);
+  }
+
+  async getHaCurrencyUser(
+    userId: string,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const response = await this.request(
+      "PATCH",
+      `/api/v1/currencies/ha/user/${userId}`,
+      {
+        signal,
+      },
+    );
+
+    return trackrHaCurrencyUserDetailResponseSchema.parse(response);
+  }
+
+  async listUserActivities(
+    userId: string,
+    {
+      end,
+      metricKey = "ha",
+      signal,
+      sortAscending = false,
+    }: {
+      end: string;
+      metricKey?: string;
+      signal?: AbortSignal;
+      sortAscending?: boolean;
+    },
+  ) {
+    const response = await this.request(
+      "GET",
+      `/api/v1/activities/users/${userId}`,
+      {
+        query: {
+          end,
+          metricKey,
+          sortAscending,
+        },
+        signal,
+      },
+    );
+
+    return trackrUserActivitiesResponseSchema.parse(response);
   }
 
   async getJson<TResponse>(

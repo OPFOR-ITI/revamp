@@ -1,16 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Award,
+  CalendarDays,
   ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Clock3,
   Loader2,
   RefreshCw,
   Search,
   ShieldAlert,
+  UserRound,
   X,
 } from "lucide-react";
 import { z } from "zod";
@@ -40,15 +45,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  TrackrHaDateTimeline,
+  type TrackrHaDateTimelineItem,
+  type TrackrHaDateTimelineStatus,
+} from "@/components/trackr/trackr-ha-date-timeline";
 import { SINGAPORE_TIME_ZONE } from "@/lib/constants";
 import {
   dateStringToDayIndex,
   getTodaySingaporeDateString,
 } from "@/lib/date";
 import {
+  trackrHaCurrencyUserDetailResponseSchema,
   trackrHaCurrencyUnitResponseSchema,
+  trackrUserActivitiesResponseSchema,
+  type TrackrHaCurrencyRecommendationDetail,
   type TrackrHaCurrencyUnitResponse,
   type TrackrHaCurrencyUser,
+  type TrackrHaCurrencyUserDetailResponse,
+  type TrackrUserActivitiesResponse,
+  type TrackrUserActivity,
 } from "@/lib/trackr-schema";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +92,29 @@ const CURRENCY_FILTER_OPTIONS: SelectableHaCurrencyBracket[] = [
   "expiring",
   "expired",
 ];
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const HA_MAINTENANCE_REQUIRED_PERIODS = 2;
+const HA_MAINTENANCE_WINDOW_DAYS = 7;
+const HA_RECOMMENDATION_RULES = {
+  double: {
+    breakCopy: "max 2 consecutive break days",
+    countMode: "periods",
+    ruleCopy: "13 periods in 7 days",
+  },
+  single: {
+    breakCopy: "max 2 consecutive break days",
+    countMode: "days",
+    ruleCopy: "10 HA days in 10 days",
+  },
+  expandedSingle: {
+    breakCopy: "1 counted period per HA day",
+    countMode: "days",
+    ruleCopy: "1 HA period per day",
+  },
+} as const satisfies Record<
+  string,
+  { breakCopy: string; countMode: "days" | "periods"; ruleCopy: string }
+>;
 
 const SORT_CURRENCY_RANK: Record<HaCurrencyBracket, number> = {
   current: 0,
@@ -156,6 +195,14 @@ function getSingaporeDateStringFromTimestamp(value: string) {
   return singaporeDateStringFormatter.format(new Date(value));
 }
 
+function getDayIndexFromTimestamp(value: string) {
+  return dateStringToDayIndex(getSingaporeDateStringFromTimestamp(value));
+}
+
+function getDateFromDayIndex(dayIndex: number) {
+  return new Date(dayIndex * DAY_IN_MS);
+}
+
 function getDaysUntilExpiry(user: TrackrHaCurrencyUser) {
   if (!user.expiryDate) {
     return user.daysToExpiry;
@@ -163,7 +210,7 @@ function getDaysUntilExpiry(user: TrackrHaCurrencyUser) {
 
   try {
     return (
-      dateStringToDayIndex(getSingaporeDateStringFromTimestamp(user.expiryDate)) -
+      getDayIndexFromTimestamp(user.expiryDate) -
       dateStringToDayIndex(getTodaySingaporeDateString())
     );
   } catch {
@@ -177,6 +224,450 @@ function formatFullExpiryDate(value: string | null) {
   }
 
   return fullDateFormatter.format(new Date(value));
+}
+
+function formatOptionalFullDate(value: string | null | undefined) {
+  if (!value) {
+    return "-";
+  }
+
+  return fullDateFormatter.format(new Date(value));
+}
+
+function formatProgrammeLabel(value: string | null | undefined) {
+  if (!value) {
+    return "No programme recorded";
+  }
+
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getRecommendationLabel(detail: TrackrHaCurrencyRecommendationDetail) {
+  switch (detail.detector) {
+    case "double":
+      return "Double HA";
+    case "single":
+      return "Single HA";
+    case "expandedSingle":
+      return "Expanded Single HA";
+    default:
+      return formatProgrammeLabel(detail.detector);
+  }
+}
+
+function formatPeriodCount(value: number) {
+  return value === 1 ? "1 period" : `${value} periods`;
+}
+
+function isCompletedHaActivity(activity: TrackrUserActivity) {
+  return (
+    activity.category.isHa &&
+    activity.attendanceStatus?.name.trim().toLowerCase() === "present"
+  );
+}
+
+function getActivitySummaryByDay(
+  activities: TrackrUserActivitiesResponse | null,
+  windowStartDayIndex: number,
+  windowEndDayIndex: number,
+) {
+  const summary = new Map<
+    number,
+    { completedPeriods: number; completedActivities: TrackrUserActivity[] }
+  >();
+
+  for (const activity of activities?.activities ?? []) {
+    const dayIndex = getDayIndexFromTimestamp(activity.date);
+
+    if (dayIndex < windowStartDayIndex || dayIndex > windowEndDayIndex) {
+      continue;
+    }
+
+    if (!isCompletedHaActivity(activity)) {
+      continue;
+    }
+
+    const current = summary.get(dayIndex) ?? {
+      completedActivities: [],
+      completedPeriods: 0,
+    };
+
+    current.completedPeriods += activity.periods;
+    current.completedActivities.push(activity);
+    summary.set(dayIndex, current);
+  }
+
+  return summary;
+}
+
+function getActivityTitle(activity: TrackrUserActivity) {
+  return `${activity.name} (${formatPeriodCount(activity.periods)})`;
+}
+
+function getDateRangeTimelineItems({
+  activities,
+  endDayIndex,
+  startDayIndex,
+}: {
+  activities: TrackrUserActivitiesResponse | null;
+  endDayIndex: number;
+  startDayIndex: number;
+}) {
+  const todayDayIndex = dateStringToDayIndex(getTodaySingaporeDateString());
+  const activitySummaryByDay = getActivitySummaryByDay(
+    activities,
+    startDayIndex,
+    endDayIndex,
+  );
+
+  return Array.from(
+    { length: endDayIndex - startDayIndex + 1 },
+    (_, index): TrackrHaDateTimelineItem & {
+      completedPeriods: number;
+    } => {
+      const dayIndex = startDayIndex + index;
+      const date = getDateFromDayIndex(dayIndex);
+      const activitySummary = activitySummaryByDay.get(dayIndex);
+      const completedActivities = activitySummary?.completedActivities ?? [];
+      const isCompleted = (activitySummary?.completedPeriods ?? 0) > 0;
+      const isPending =
+        activities === null ? false : !isCompleted && dayIndex >= todayDayIndex;
+      const status: TrackrHaDateTimelineStatus =
+        activities === null
+          ? "unknown"
+          : isCompleted
+            ? "completed"
+            : isPending
+              ? "pending"
+              : "missed";
+
+      return {
+        completedPeriods: activitySummary?.completedPeriods ?? 0,
+        date,
+        id: dayIndex,
+        isToday: dayIndex === todayDayIndex,
+        status,
+        title:
+          completedActivities.length > 0
+            ? completedActivities.map(getActivityTitle).join(", ")
+            : undefined,
+      };
+    },
+  );
+}
+
+function getTimelineCompletedPeriods(items: { completedPeriods: number }[]) {
+  return items.reduce((total, item) => total + item.completedPeriods, 0);
+}
+
+function getTimelineCompletedDays(items: { completedPeriods: number }[]) {
+  return items.filter((item) => item.completedPeriods > 0).length;
+}
+
+function getRecommendationEndTimestamp(
+  recommendation: TrackrHaCurrencyRecommendationDetail,
+  fallback: string,
+) {
+  return (
+    recommendation.latestEndDate ??
+    recommendation.earliestEndDate ??
+    recommendation.startDate ??
+    fallback
+  );
+}
+
+function getUserActivitiesEndDate(detail: TrackrHaCurrencyUserDetailResponse) {
+  const candidates = [
+    detail.expiryDate,
+    ...(detail.recommendations?.recommendationDetails.flatMap((recommendation) => [
+      recommendation.earliestEndDate,
+      recommendation.latestEndDate,
+      recommendation.startDate,
+    ]) ?? []),
+  ].filter((value): value is string => Boolean(value));
+
+  if (candidates.length === 0) {
+    return getTodaySingaporeDateString();
+  }
+
+  const latestTimestamp = candidates.reduce((latest, current) =>
+    getDayIndexFromTimestamp(current) > getDayIndexFromTimestamp(latest)
+      ? current
+      : latest,
+  );
+
+  return getSingaporeDateStringFromTimestamp(latestTimestamp);
+}
+
+function getRecommendationPlanCopy({
+  dueDate,
+  periodsRemaining,
+}: {
+  dueDate: string;
+  periodsRemaining: number;
+}) {
+  if (periodsRemaining === 0) {
+    return "Requirement complete for this recommendation.";
+  }
+
+  const remainingCopy = formatPeriodCount(periodsRemaining);
+  const dueDayIndex = getDayIndexFromTimestamp(dueDate);
+  const todayDayIndex = dateStringToDayIndex(getTodaySingaporeDateString());
+  const daysUntilDue = dueDayIndex - todayDayIndex;
+
+  if (daysUntilDue === 0) {
+    return `Clock ${remainingCopy} today.`;
+  }
+
+  if (daysUntilDue < 0) {
+    return `${remainingCopy} overdue since ${formatOptionalFullDate(dueDate)}.`;
+  }
+
+  return `Clock ${remainingCopy} by ${formatOptionalFullDate(dueDate)}.`;
+}
+
+function getRecommendationTitle(detail: TrackrHaCurrencyRecommendationDetail) {
+  switch (detail.detector) {
+    case "double":
+      return "Refresh HA via Double HA Programme";
+    case "single":
+      return "Refresh HA via Single HA Programme";
+    case "expandedSingle":
+      return "Refresh HA via Expanded Single HA Programme";
+    default:
+      return getRecommendationLabel(detail);
+  }
+}
+
+type RecommendationSummaryLine = {
+  detail?: string;
+  label: string;
+  value: string;
+};
+
+function getRecommendationSummaryLines({
+  detail,
+  endDate,
+  periodsRemaining,
+}: {
+  detail: TrackrHaCurrencyRecommendationDetail;
+  endDate: string;
+  periodsRemaining: number;
+}) {
+  const rule =
+    HA_RECOMMENDATION_RULES[
+      detail.detector as keyof typeof HA_RECOMMENDATION_RULES
+    ];
+  const daysRemaining = detail.daysRemaining ?? "-";
+  const periodUnit =
+    rule?.countMode === "days"
+      ? `${periodsRemaining} HA ${periodsRemaining === 1 ? "day" : "days"}`
+      : formatPeriodCount(periodsRemaining);
+  const lines: RecommendationSummaryLine[] = [
+    {
+      detail: `over ${daysRemaining} HA ${
+        detail.daysRemaining === 1 ? "day" : "days"
+      }`,
+      label: "Remaining",
+      value: periodUnit,
+    },
+    {
+      label: "Earliest",
+      value: formatOptionalFullDate(detail.earliestEndDate ?? endDate),
+    },
+  ];
+
+  if (detail.breakDaysRemaining !== undefined) {
+    lines.push({
+      detail:
+        detail.maxConsecutiveBreakDays !== undefined
+          ? `max ${detail.maxConsecutiveBreakDays} consecutive`
+          : rule?.breakCopy,
+      label: "Breaks",
+      value: `${detail.breakDaysRemaining} ${
+        detail.breakDaysRemaining === 1 ? "day" : "days"
+      }`,
+    });
+  } else if (rule) {
+    lines.push({
+      label: "Breaks",
+      value: rule.breakCopy,
+    });
+  }
+
+  return lines;
+}
+
+type RecommendationTimelinePlan = {
+  badge: string;
+  detail: TrackrHaCurrencyRecommendationDetail;
+  items: TrackrHaDateTimelineItem[];
+  key: string;
+  periodsCompleted: number;
+  periodsRemaining: number;
+  requiredPeriods: number;
+  summaryLines: RecommendationSummaryLine[];
+  subtitle: string;
+  title: string;
+};
+
+function getRecommendationTimelinePlan({
+  activities,
+  detail,
+  fallbackEndDate,
+}: {
+  activities: TrackrUserActivitiesResponse | null;
+  detail: TrackrHaCurrencyRecommendationDetail;
+  fallbackEndDate: string;
+}): RecommendationTimelinePlan | null {
+  const endDate = getRecommendationEndTimestamp(detail, fallbackEndDate);
+  const startDate = detail.startDate ?? endDate;
+
+  try {
+    const startDayIndex = getDayIndexFromTimestamp(startDate);
+    const endDayIndex = Math.max(startDayIndex, getDayIndexFromTimestamp(endDate));
+    const items = getDateRangeTimelineItems({
+      activities,
+      endDayIndex,
+      startDayIndex,
+    }).map((item, index) => ({
+      ...item,
+      markerLabel:
+        item.status === "completed" || item.status === "missed" ? String(index + 1) : undefined,
+    }));
+    const rule =
+      HA_RECOMMENDATION_RULES[
+        detail.detector as keyof typeof HA_RECOMMENDATION_RULES
+      ];
+    const actualCompletedUnits =
+      rule?.countMode === "days"
+        ? getTimelineCompletedDays(items)
+        : getTimelineCompletedPeriods(items);
+    const recommendedRemainingPeriods = Math.max(
+      0,
+      detail.periodsRemaining ?? detail.daysRemaining ?? 0,
+    );
+    const requiredPeriods =
+      activities === null
+        ? recommendedRemainingPeriods
+        : actualCompletedUnits + recommendedRemainingPeriods;
+    const periodsCompleted =
+      activities === null
+        ? 0
+        : Math.min(requiredPeriods, actualCompletedUnits);
+    const periodsRemaining =
+      activities === null
+        ? recommendedRemainingPeriods
+        : Math.max(0, requiredPeriods - periodsCompleted);
+
+    return {
+      badge: `${periodsCompleted}/${requiredPeriods} done`,
+      detail,
+      items,
+      key: detail.detector,
+      periodsCompleted,
+      periodsRemaining,
+      requiredPeriods,
+      summaryLines: getRecommendationSummaryLines({
+        detail,
+        endDate,
+        periodsRemaining,
+      }),
+      subtitle: getRecommendationPlanCopy({
+        dueDate: endDate,
+        periodsRemaining,
+      }),
+      title: getRecommendationTitle(detail),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getMaintenancePlan(
+  detail: TrackrHaCurrencyUserDetailResponse,
+  activities: TrackrUserActivitiesResponse | null,
+): RecommendationTimelinePlan | null {
+  if (detail.recommendations?.type !== "maintenance" || !detail.expiryDate) {
+    return null;
+  }
+
+  try {
+    const maintenanceRecommendation =
+      detail.recommendations.recommendationDetails.find(
+        (recommendation) => recommendation.detector === "maintenance",
+      ) ?? detail.recommendations.recommendationDetails[0];
+
+    if (!maintenanceRecommendation) {
+      return null;
+    }
+
+    const expiryDayIndex = getDayIndexFromTimestamp(detail.expiryDate);
+    const todayDayIndex = dateStringToDayIndex(getTodaySingaporeDateString());
+    const daysUntilExpiry = expiryDayIndex - todayDayIndex;
+    const windowStartDayIndex =
+      expiryDayIndex - (HA_MAINTENANCE_WINDOW_DAYS - 1);
+    const items = getDateRangeTimelineItems({
+      activities,
+      endDayIndex: expiryDayIndex,
+      startDayIndex: windowStartDayIndex,
+    });
+    const actualCompletedPeriods = getTimelineCompletedPeriods(items);
+    const periodsCompleted = Math.min(
+      HA_MAINTENANCE_REQUIRED_PERIODS,
+      actualCompletedPeriods,
+    );
+    const periodsRemaining =
+      activities === null
+        ? Math.max(
+            0,
+            maintenanceRecommendation?.periodsRemaining ??
+              HA_MAINTENANCE_REQUIRED_PERIODS,
+          )
+        : Math.max(0, HA_MAINTENANCE_REQUIRED_PERIODS - periodsCompleted);
+    const dueDate =
+      maintenanceRecommendation?.latestEndDate ?? detail.expiryDate;
+
+    return {
+      badge: `${periodsCompleted}/${HA_MAINTENANCE_REQUIRED_PERIODS} done`,
+      detail: maintenanceRecommendation,
+      items,
+      key: "maintenance",
+      periodsCompleted,
+      periodsRemaining,
+      requiredPeriods: HA_MAINTENANCE_REQUIRED_PERIODS,
+      summaryLines: [
+        {
+          label: "Window",
+          value: `${formatOptionalFullDate(
+            getDateFromDayIndex(windowStartDayIndex).toISOString(),
+          )} - ${formatOptionalFullDate(detail.expiryDate)}`,
+        },
+        {
+          label: "Due",
+          value: formatOptionalFullDate(dueDate),
+        },
+        {
+          label: "Left",
+          value: formatPeriodCount(periodsRemaining),
+        },
+      ],
+      subtitle:
+        periodsRemaining === 0
+          ? "Maintenance complete for this 7-day window."
+          : daysUntilExpiry === 0
+            ? `Clock ${formatPeriodCount(periodsRemaining)} today to maintain HA.`
+            : daysUntilExpiry < 0
+              ? `${formatPeriodCount(periodsRemaining)} overdue since ${formatOptionalFullDate(dueDate)}.`
+              : `Clock ${formatPeriodCount(periodsRemaining)} by ${formatOptionalFullDate(dueDate)}.`,
+      title: "Maintain HA",
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getCurrencyValidityCopy(user: TrackrHaCurrencyUser) {
@@ -313,6 +804,236 @@ function SortIcon({
   );
 }
 
+function RecommendationTimelineAccordion({
+  plans,
+}: {
+  plans: RecommendationTimelinePlan[];
+}) {
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () => new Set(plans[0]?.key ? [plans[0].key] : []),
+  );
+
+  if (plans.length === 0) {
+    return (
+      <div className="rounded-md border border-zinc-950/10 bg-white/85 px-3 py-2 text-sm text-zinc-600">
+        No Trackr recommendations returned for this user.
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-full min-w-0 overflow-hidden rounded-md border border-emerald-950/10 bg-white/85">
+      {plans.map((plan) => {
+        const isOpen = openKeys.has(plan.key);
+
+        return (
+          <div
+            key={plan.key}
+            className="min-w-0 overflow-hidden border-b border-zinc-950/10 last:border-b-0"
+          >
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              onClick={() => {
+                setOpenKeys((current) => {
+                  const next = new Set(current);
+
+                  if (next.has(plan.key)) {
+                    next.delete(plan.key);
+                  } else {
+                    next.add(plan.key);
+                  }
+
+                  return next;
+                });
+              }}
+              className={cn(
+                "flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-emerald-50/40",
+                isOpen && "bg-emerald-50/30",
+              )}
+            >
+              {isOpen ? (
+                <ChevronDown className="size-4 shrink-0 text-emerald-800" />
+              ) : (
+                <ChevronRight className="size-4 shrink-0 text-zinc-400" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-zinc-950">
+                  {plan.title}
+                </span>
+                <span className="block truncate text-xs text-zinc-600">
+                  {plan.subtitle}
+                </span>
+              </span>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "shrink-0 rounded-full",
+                  plan.periodsRemaining > 0
+                    ? "border-amber-950/10 bg-amber-50 text-amber-950"
+                    : "border-emerald-950/10 bg-emerald-50 text-emerald-950",
+                )}
+              >
+                {plan.badge}
+              </Badge>
+            </button>
+            {isOpen ? (
+              <div className="max-w-full min-w-0 overflow-hidden px-4 pt-2 pb-3 [contain:inline-size]">
+                <ul className="mb-3 flex flex-col gap-y-1 text-sm text-zinc-600 md:flex-row md:divide-x md:divide-zinc-200">
+                  {plan.summaryLines.map((line) => (
+                    <li
+                      key={`${plan.key}-${line.label}-${line.value}`}
+                      className="flex min-w-0 flex-1 gap-2 md:px-3 md:first:pl-0"
+                    >
+                      <span className="mt-2 size-1 rounded-full bg-zinc-500" />
+                      <span className="min-w-0">
+                        <span className="text-zinc-500">{line.label}: </span>
+                        <span className="font-semibold text-zinc-950">
+                          {line.value}
+                        </span>
+                        {line.detail ? (
+                          <span className="text-zinc-600"> {line.detail}</span>
+                        ) : null}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <TrackrHaDateTimeline items={plan.items} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HaCurrencyUserDetailPanel({
+  activities,
+  activitiesErrorMessage,
+  areActivitiesLoading,
+  user,
+  detail,
+  errorMessage,
+  isLoading,
+}: {
+  activities: TrackrUserActivitiesResponse | null;
+  activitiesErrorMessage: string | null;
+  areActivitiesLoading: boolean;
+  user: TrackrHaCurrencyUser;
+  detail: TrackrHaCurrencyUserDetailResponse | null;
+  errorMessage: string | null;
+  isLoading: boolean;
+}) {
+  if (isLoading && !detail) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-950/10 bg-[#fbfaf4] px-4 py-5 text-sm text-zinc-600">
+        <Loader2 className="size-4 animate-spin text-emerald-800" />
+        Loading HA planning details...
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="rounded-lg border border-red-300/70 bg-red-50/90 px-4 py-3 text-sm text-red-900">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+          <p>{errorMessage}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return null;
+  }
+
+  const recommendationDetails =
+    detail.recommendations?.recommendationDetails ?? [];
+  const maintenancePlan = getMaintenancePlan(detail, activities);
+  const recommendationPlans = [
+    ...(maintenancePlan ? [maintenancePlan] : []),
+    ...recommendationDetails
+      .filter((recommendation) => recommendation.detector !== "maintenance")
+      .map((recommendation) =>
+        getRecommendationTimelinePlan({
+          activities,
+          detail: recommendation,
+          fallbackEndDate: detail.expiryDate ?? new Date().toISOString(),
+        }),
+      )
+      .filter((plan): plan is RecommendationTimelinePlan => plan !== null),
+  ];
+
+  return (
+    <div className="space-y-2 rounded-lg border border-emerald-950/10 bg-[#fbfaf4] p-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-950">
+            <UserRound className="size-4 text-emerald-800" />
+            <span className="truncate">{detail.user.systemName || user.name}</span>
+          </div>
+          <p className="mt-1 font-mono text-xs text-zinc-500">{detail.user.id}</p>
+        </div>
+        <Badge
+          variant="outline"
+          className="w-fit rounded-full border-emerald-950/10 bg-white text-emerald-950"
+        >
+          {formatProgrammeLabel(detail.qualifyingProgramme)}
+        </Badge>
+      </div>
+
+      <dl className="flex flex-wrap gap-x-4 gap-y-1 rounded-md border border-zinc-950/10 bg-white/85 px-3 py-2 text-xs">
+        <div className="flex items-center gap-1.5">
+          <CalendarDays className="size-3.5 text-zinc-400" />
+          <dt className="font-medium text-zinc-500">Expires</dt>
+          <dd className="font-semibold text-zinc-950">
+            {formatOptionalFullDate(detail.expiryDate)}
+          </dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Award className="size-3.5 text-zinc-400" />
+          <dt className="font-medium text-zinc-500">Awarded</dt>
+          <dd className="font-semibold text-zinc-950">
+            {formatOptionalFullDate(detail.awardedDate)}
+          </dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Clock3 className="size-3.5 text-zinc-400" />
+          <dt className="font-medium text-zinc-500">Double HA</dt>
+          <dd className="font-semibold text-zinc-950">
+            {formatOptionalFullDate(detail.doubleHaEligibleDate)}
+          </dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ClipboardList className="size-3.5 text-zinc-400" />
+          <dt className="font-medium text-zinc-500">Rec</dt>
+          <dd className="font-semibold text-zinc-950">
+            {formatProgrammeLabel(detail.recommendations?.type)}
+          </dd>
+        </div>
+      </dl>
+
+      <RecommendationTimelineAccordion
+        key={`${detail.user.id}:${recommendationPlans.map((plan) => plan.key).join("|")}`}
+        plans={recommendationPlans}
+      />
+
+      {areActivitiesLoading ? (
+        <div className="flex items-center gap-2 rounded-md border border-zinc-950/10 bg-white/85 px-3 py-2 text-xs text-zinc-600">
+          <Loader2 className="size-3.5 animate-spin text-emerald-800" />
+          Loading user HA activities for the calendar...
+        </div>
+      ) : activitiesErrorMessage ? (
+        <div className="rounded-md border border-amber-300/70 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
+          {activitiesErrorMessage}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function TrackrHaCurrencyDialog({
   open,
   onOpenChange,
@@ -337,6 +1058,25 @@ export function TrackrHaCurrencyDialog({
   >([]);
   const [sortKey, setSortKey] = useState<HaCurrencySortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [loadingUserDetailId, setLoadingUserDetailId] = useState<string | null>(
+    null,
+  );
+  const [userDetailById, setUserDetailById] = useState<
+    Record<string, TrackrHaCurrencyUserDetailResponse>
+  >({});
+  const [userDetailErrorById, setUserDetailErrorById] = useState<
+    Record<string, string>
+  >({});
+  const [loadingUserActivitiesId, setLoadingUserActivitiesId] = useState<
+    string | null
+  >(null);
+  const [userActivitiesById, setUserActivitiesById] = useState<
+    Record<string, TrackrUserActivitiesResponse>
+  >({});
+  const [userActivitiesErrorById, setUserActivitiesErrorById] = useState<
+    Record<string, string>
+  >({});
 
   const handleLoadCurrency = useCallback(async () => {
     const requestCookie = cookie.trim();
@@ -393,7 +1133,155 @@ export function TrackrHaCurrencyDialog({
     }
   }, [cookie, unitId]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+  const handleLoadUserActivities = useCallback(
+    async (user: TrackrHaCurrencyUser, detail: TrackrHaCurrencyUserDetailResponse) => {
+      const requestCookie = cookie.trim();
+
+      if (!requestCookie) {
+        return;
+      }
+
+      const endDate = getUserActivitiesEndDate(detail);
+      const cacheKey = `${user.id}:${endDate}`;
+
+      if (userActivitiesById[cacheKey]) {
+        return;
+      }
+
+      setLoadingUserActivitiesId(user.id);
+      setUserActivitiesErrorById((current) => {
+        const next = { ...current };
+        delete next[cacheKey];
+        return next;
+      });
+
+      try {
+        const response = await fetch(
+          `/api/trackr/activities/users/${encodeURIComponent(user.id)}`,
+          {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              cookie: requestCookie,
+              end: endDate,
+            }),
+          },
+        );
+        const json = (await response.json()) as unknown;
+
+        if (!response.ok) {
+          throw new Error(getApiErrorMessage(json));
+        }
+
+        const parsed = trackrUserActivitiesResponseSchema.safeParse(json);
+
+        if (!parsed.success) {
+          throw new Error("Trackr user activities response shape was invalid.");
+        }
+
+        setUserActivitiesById((current) => ({
+          ...current,
+          [cacheKey]: parsed.data,
+        }));
+      } catch (error) {
+        setUserActivitiesErrorById((current) => ({
+          ...current,
+          [cacheKey]:
+            error instanceof Error
+              ? error.message
+              : "Unable to load Trackr user activities.",
+        }));
+      } finally {
+        setLoadingUserActivitiesId((current) =>
+          current === user.id ? null : current,
+        );
+      }
+    },
+    [cookie, userActivitiesById],
+  );
+
+  const handleSelectUser = useCallback(
+    async (user: TrackrHaCurrencyUser) => {
+      if (selectedUserId === user.id) {
+        setSelectedUserId(null);
+        return;
+      }
+
+      setSelectedUserId(user.id);
+
+      if (userDetailById[user.id]) {
+        void handleLoadUserActivities(user, userDetailById[user.id]);
+        return;
+      }
+
+      const requestCookie = cookie.trim();
+
+      if (!requestCookie) {
+        setUserDetailErrorById((current) => ({
+          ...current,
+          [user.id]: "Enter your Trackr cookie first.",
+        }));
+        return;
+      }
+
+      setLoadingUserDetailId(user.id);
+      setUserDetailErrorById((current) => {
+        const next = { ...current };
+        delete next[user.id];
+        return next;
+      });
+
+      try {
+        const response = await fetch(
+          `/api/trackr/currencies/ha/user/${encodeURIComponent(user.id)}`,
+          {
+            method: "POST",
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              cookie: requestCookie,
+            }),
+          },
+        );
+        const json = (await response.json()) as unknown;
+
+        if (!response.ok) {
+          throw new Error(getApiErrorMessage(json));
+        }
+
+        const parsed = trackrHaCurrencyUserDetailResponseSchema.safeParse(json);
+
+        if (!parsed.success) {
+          throw new Error("Trackr HA currency user response shape was invalid.");
+        }
+
+        setUserDetailById((current) => ({
+          ...current,
+          [user.id]: parsed.data,
+        }));
+        void handleLoadUserActivities(user, parsed.data);
+      } catch (error) {
+        setUserDetailErrorById((current) => ({
+          ...current,
+          [user.id]:
+            error instanceof Error
+              ? error.message
+              : "Unable to load Trackr HA currency user.",
+        }));
+      } finally {
+        setLoadingUserDetailId((current) =>
+          current === user.id ? null : current,
+        );
+      }
+    },
+    [cookie, handleLoadUserActivities, selectedUserId, userDetailById],
+  );
+
   useEffect(() => {
     if (!open) {
       return;
@@ -408,8 +1296,14 @@ export function TrackrHaCurrencyDialog({
     setSelectedBrackets([]);
     setSortKey(null);
     setSortDirection("asc");
+    setSelectedUserId(null);
+    setLoadingUserDetailId(null);
+    setUserDetailById({});
+    setUserDetailErrorById({});
+    setLoadingUserActivitiesId(null);
+    setUserActivitiesById({});
+    setUserActivitiesErrorById({});
   }, [unitId]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const unitOptions = useMemo(() => {
     const unitNames = new Set(
@@ -865,34 +1759,101 @@ export function TrackrHaCurrencyDialog({
                     filteredUsers.map((user) => {
                       const bracket = getHaCurrencyBracket(user);
                       const validityCopy = getCurrencyValidityCopy(user);
+                      const isSelected = selectedUserId === user.id;
+                      const userDetail = userDetailById[user.id] ?? null;
+                      const userActivityCacheKey = userDetail
+                        ? `${user.id}:${getUserActivitiesEndDate(userDetail)}`
+                        : null;
 
                       return (
-                        <TableRow key={user.id} className="border-emerald-950/8">
-                          <TableCell className="py-3 pl-6 align-center">
-                            <p className="font-medium text-zinc-950">{user.name}</p>
-                          </TableCell>
-                          <TableCell className="py-3 align-center text-sm text-zinc-700">
-                            {user.unitName}
-                          </TableCell>
-                          <TableCell className="py-3 align-center">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className={cn("rounded-full", getBracketClassName(bracket))}
+                        <Fragment key={user.id}>
+                          <TableRow
+                            aria-expanded={isSelected}
+                            tabIndex={0}
+                            onClick={() => {
+                              void handleSelectUser(user);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") {
+                                return;
+                              }
+
+                              event.preventDefault();
+                              void handleSelectUser(user);
+                            }}
+                            className={cn(
+                              "cursor-pointer border-emerald-950/8 transition hover:bg-emerald-50/45 focus-visible:bg-emerald-50/60 focus-visible:outline-none",
+                              isSelected && "bg-emerald-50/60",
+                            )}
+                          >
+                            <TableCell className="py-3 pl-6 align-center">
+                              <div className="flex min-w-0 items-center gap-2">
+                                {isSelected ? (
+                                  <ChevronDown className="size-4 shrink-0 text-emerald-800" />
+                                ) : (
+                                  <ChevronRight className="size-4 shrink-0 text-zinc-400" />
+                                )}
+                                <p className="truncate font-medium text-zinc-950">
+                                  {user.name}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-3 align-center text-sm text-zinc-700">
+                              {user.unitName}
+                            </TableCell>
+                            <TableCell className="py-3 align-center">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "rounded-full",
+                                    getBracketClassName(bracket),
+                                  )}
+                                >
+                                  {getBracketLabel(bracket)}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-3 align-top">
+                              <p className="font-medium text-zinc-900">
+                                {validityCopy.description}
+                              </p>
+                              <p className="mt-1 font-mono text-xs text-zinc-500">
+                                {validityCopy.summary}
+                              </p>
+                            </TableCell>
+                          </TableRow>
+                          {isSelected ? (
+                            <TableRow className="border-emerald-950/8 bg-white/70">
+                              <TableCell
+                                colSpan={4}
+                                className="max-w-0 whitespace-normal px-4 py-3"
                               >
-                                {getBracketLabel(bracket)}
-                              </Badge>
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-3 align-top">
-                            <p className="font-medium text-zinc-900">
-                              {validityCopy.description}
-                            </p>
-                            <p className="mt-1 font-mono text-xs text-zinc-500">
-                              {validityCopy.summary}
-                            </p>
-                          </TableCell>
-                        </TableRow>
+                                <HaCurrencyUserDetailPanel
+                                  activities={
+                                    userActivityCacheKey
+                                      ? (userActivitiesById[userActivityCacheKey] ?? null)
+                                      : null
+                                  }
+                                  activitiesErrorMessage={
+                                    userActivityCacheKey
+                                      ? (userActivitiesErrorById[
+                                          userActivityCacheKey
+                                        ] ?? null)
+                                      : null
+                                  }
+                                  areActivitiesLoading={
+                                    loadingUserActivitiesId === user.id
+                                  }
+                                  user={user}
+                                  detail={userDetail}
+                                  errorMessage={userDetailErrorById[user.id] ?? null}
+                                  isLoading={loadingUserDetailId === user.id}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ) : null}
+                        </Fragment>
                       );
                     })
                   ) : (
