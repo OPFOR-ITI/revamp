@@ -54,6 +54,31 @@ export const trackrCreateActivitiesResponseSchema = z.object({
   activityIds: z.array(z.string().uuid()),
 });
 
+export const trackrHaCurrencyStatsSchema = z.object({
+  numCurrent: z.number().int().nonnegative(),
+  numExpiringSoon: z.number().int().nonnegative(),
+  numExpired: z.number().int().nonnegative(),
+  numNotSubscribed: z.number().int().nonnegative(),
+});
+
+export const trackrHaCurrencyUserSchema = z
+  .object({
+    id: z.string().uuid("Trackr user id must be a valid UUID."),
+    name: z.string(),
+    unitName: z.string(),
+    status: z.string(),
+    daysToExpiry: z.number().int().nullable(),
+    expiryDate: z.string().nullable(),
+    doubleHaEligibleDate: z.string().nullable(),
+  })
+  .passthrough();
+
+export const trackrHaCurrencyUnitResponseSchema = z.object({
+  unitName: z.string(),
+  stats: trackrHaCurrencyStatsSchema,
+  users: z.array(trackrHaCurrencyUserSchema),
+});
+
 export const trackrUsersQueryPayloadSchema = z.object({
   unitIds: z
     .array(z.string().uuid("Each Trackr unitId must be a valid UUID."))
@@ -178,6 +203,13 @@ export type TrackrCreateActivitiesPayload = z.infer<
 >;
 export type TrackrCreateActivitiesResponse = z.infer<
   typeof trackrCreateActivitiesResponseSchema
+>;
+export type TrackrHaCurrencyStats = z.infer<
+  typeof trackrHaCurrencyStatsSchema
+>;
+export type TrackrHaCurrencyUser = z.infer<typeof trackrHaCurrencyUserSchema>;
+export type TrackrHaCurrencyUnitResponse = z.infer<
+  typeof trackrHaCurrencyUnitResponseSchema
 >;
 export type TrackrUsersQueryPayload = z.infer<
   typeof trackrUsersQueryPayloadSchema

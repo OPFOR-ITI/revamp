@@ -10,6 +10,7 @@ import {
 import { usePaginatedQuery } from "convex/react";
 import {
   ArrowUpRight,
+  Award,
   CheckCircle2,
   Clock3,
   Database,
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { api } from "../../../convex/_generated/api";
+import { TrackrHaCurrencyDialog } from "@/components/trackr/trackr-ha-currency-dialog";
 import { TrackrAttendanceUpdateDialog } from "@/components/trackr/trackr-attendance-update-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -205,6 +207,7 @@ export function TrackrActivitiesPage() {
   const [isCookieDialogRequested, setIsCookieDialogRequested] = useState(false);
   const [isCookieDialogDismissed, setIsCookieDialogDismissed] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isHaCurrencyDialogOpen, setIsHaCurrencyDialogOpen] = useState(false);
   const [selectedTrackrActivityId, setSelectedTrackrActivityId] = useState<
     string | null
   >(null);
@@ -244,9 +247,11 @@ export function TrackrActivitiesPage() {
     sourceConductPaginationStatus === "LoadingFirstPage" ||
     sourceConductPaginationStatus === "LoadingMore";
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setHasMounted(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     let cancelled = false;
@@ -522,31 +527,43 @@ export function TrackrActivitiesPage() {
                   only when the session needs it.
                 </CardDescription>
               </div>
-              <div className="grid grid-cols-2 gap-2 align-center sm:grid-cols-3">
-                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                    Session
-                  </p>
-                  <p className="mt-1 font-mono text-xs text-zinc-700">
-                    {hasCookieValue ? "Cookie ready" : "Needs cookie"}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
-                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                    <Database className="size-3.5" />
-                    Loaded
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsHaCurrencyDialogOpen(true);
+                  }}
+                  className="rounded-xl border-emerald-950/10 bg-white/80"
+                >
+                  <Award className="size-4" />
+                  HA Currency
+                </Button>
+                <div className="grid grid-cols-2 gap-2 align-center sm:grid-cols-3">
+                  <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                      Session
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-zinc-700">
+                      {hasCookieValue ? "Cookie ready" : "Needs cookie"}
+                    </p>
                   </div>
-                  <p className="mt-1 font-mono text-xs text-zinc-700">
-                    {trackrActivities.length}
-                  </p>
-                </div>
-                <div className="col-span-2 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm sm:col-span-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
-                    Source
-                  </p>
-                  <p className="mt-1 truncate font-mono text-xs text-zinc-700">
-                    /api/v1/activities/units
-                  </p>
+                  <div className="rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                      <Database className="size-3.5" />
+                      Loaded
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-zinc-700">
+                      {trackrActivities.length}
+                    </p>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-emerald-950/10 bg-white/70 px-3 py-2 shadow-sm sm:col-span-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-900/55">
+                      Source
+                    </p>
+                    <p className="mt-1 truncate font-mono text-xs text-zinc-700">
+                      /api/v1/activities/units
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -826,6 +843,14 @@ export function TrackrActivitiesPage() {
         onLoadMoreSourceConducts={() => {
           loadMoreSourceConducts(25);
         }}
+      />
+
+      <TrackrHaCurrencyDialog
+        open={isHaCurrencyDialogOpen}
+        onOpenChange={setIsHaCurrencyDialogOpen}
+        cookie={cookie}
+        unitId={defaultConductingUnitId}
+        unitName={defaultConductingUnitName}
       />
 
       <Card className="border-emerald-950/10 bg-white/75 shadow-[0_22px_60px_-48px_rgba(44,74,36,0.75)] backdrop-blur">

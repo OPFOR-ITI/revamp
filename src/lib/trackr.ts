@@ -7,6 +7,7 @@ import {
   trackrAttendanceUserAddPayloadSchema,
   trackrCreateActivitiesPayloadSchema,
   trackrCreateActivitiesResponseSchema,
+  trackrHaCurrencyUnitResponseSchema,
   trackrStatusesResponseSchema,
   trackrUsersQueryPayloadSchema,
   trackrUsersQueryResponseSchema,
@@ -260,6 +261,21 @@ export class TrackrClient {
     });
 
     return trackrCreateActivitiesResponseSchema.parse(response);
+  }
+
+  async getHaCurrencyUnit(
+    unitId: string,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const response = await this.request(
+      "GET",
+      `/api/v1/currencies/ha/units/${unitId}`,
+      {
+        signal,
+      },
+    );
+
+    return trackrHaCurrencyUnitResponseSchema.parse(response);
   }
 
   async getJson<TResponse>(
