@@ -180,6 +180,39 @@ export const trackrAttendanceUserAddPayloadSchema = z.object({
     .min(1, "At least one Trackr userId is required."),
 });
 
+export const trackrAttendanceUnitTreeStatsSchema = z
+  .object({
+    numDirectMembers: z.number().int().nonnegative(),
+    numCumulativeMembers: z.number().int().nonnegative(),
+    numDirectAttendances: z.number().int().nonnegative(),
+    numParticipatingUnitsWithMembers: z.number().int().nonnegative(),
+    numUnitsWithMembers: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+export type TrackrAttendanceUnitTree = {
+  id: string;
+  name: string;
+  stats?: z.infer<typeof trackrAttendanceUnitTreeStatsSchema>;
+  children: TrackrAttendanceUnitTree[];
+};
+
+export const trackrAttendanceUnitTreeSchema: z.ZodType<TrackrAttendanceUnitTree> =
+  z.lazy(() =>
+    z
+      .object({
+        id: z.string().uuid("Trackr unit id must be a valid UUID."),
+        name: z.string(),
+        stats: trackrAttendanceUnitTreeStatsSchema.optional(),
+        children: z.array(trackrAttendanceUnitTreeSchema).default([]),
+      })
+      .passthrough(),
+  );
+
+export const trackrAttendanceUnitTreesResponseSchema = z.object({
+  subtrees: z.array(trackrAttendanceUnitTreeSchema),
+});
+
 const trackrAttendanceStatusReferenceSchema = z
   .object({
     id: trackrMixedIdSchema.optional(),
@@ -296,6 +329,9 @@ export type TrackrStatusesResponse = z.infer<
 >;
 export type TrackrAttendanceUserAddPayload = z.infer<
   typeof trackrAttendanceUserAddPayloadSchema
+>;
+export type TrackrAttendanceUnitTreesResponse = z.infer<
+  typeof trackrAttendanceUnitTreesResponseSchema
 >;
 export type TrackrActivityAttendanceRow = z.infer<
   typeof trackrActivityAttendanceRowSchema

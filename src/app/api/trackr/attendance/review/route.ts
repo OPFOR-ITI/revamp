@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { normalizeTrackrAttendanceRows } from "@/lib/trackr-attendance";
-import { TRACKR_ATTENDANCE_REVIEW_UNIT_IDS } from "@/lib/trackr-config";
+import { getTrackrAttendanceUnitsFromTrees } from "@/lib/trackr-config";
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
 import type { TrackrActivityAttendanceRow } from "@/lib/trackr-schema";
 
@@ -29,12 +29,22 @@ export async function POST(request: Request) {
     const trackr = createTrackrClient({
       cookie: parsedRequest.cookie,
     });
-    const [usersResponse, initialAttendanceResponse] = await Promise.all([
-      trackr.queryUsers({
-        unitIds: [...TRACKR_ATTENDANCE_REVIEW_UNIT_IDS],
-      }),
+    const [unitTreesResponse, initialAttendanceResponse] = await Promise.all([
+      trackr.getAttendanceUnitTrees(parsedRequest.activityId),
       trackr.getActivityAttendance(parsedRequest.activityId),
     ]);
+    const reviewUnits = getTrackrAttendanceUnitsFromTrees(unitTreesResponse);
+
+    if (reviewUnits.length === 0) {
+      throw new TrackrError(
+        "TRACKR_ATTENDANCE_REVIEW_UNITS_EMPTY",
+        "No Trackr attendance units were found for this activity.",
+      );
+    }
+
+    const usersResponse = await trackr.queryUsers({
+      unitIds: reviewUnits.map((unit) => unit.id),
+    });
     const existingAttendanceRows = normalizeTrackrAttendanceRows(
       initialAttendanceResponse.attendances as TrackrActivityAttendanceRow[],
     );
@@ -63,6 +73,7 @@ export async function POST(request: Request) {
 
     return noStoreJson({
       activityId: parsedRequest.activityId,
+      queriedUnitCount: reviewUnits.length,
       queriedUserCount: usersResponse.users.length,
       statuses: statusesResponse.statuses,
       attendanceRows: normalizeTrackrAttendanceRows(

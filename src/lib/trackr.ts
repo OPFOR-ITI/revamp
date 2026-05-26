@@ -4,6 +4,7 @@ import {
   trackrActivitiesResponseSchema,
   trackrActivityAttendanceResponseSchema,
   trackrAttendancePatchPayloadSchema,
+  trackrAttendanceUnitTreesResponseSchema,
   trackrAttendanceUserAddPayloadSchema,
   trackrCreateActivitiesPayloadSchema,
   trackrCreateActivitiesResponseSchema,
@@ -226,6 +227,20 @@ export class TrackrClient {
     );
 
     return trackrActivityAttendanceResponseSchema.parse(response);
+  }
+
+  async getAttendanceUnitTrees(
+    activityId: string,
+    { signal }: { signal?: AbortSignal } = {},
+  ) {
+    const response = await this.request("GET", "/api/v1/attendance/units/trees", {
+      query: {
+        activityId,
+      },
+      signal,
+    });
+
+    return trackrAttendanceUnitTreesResponseSchema.parse(response);
   }
 
   async patchActivityAttendance(
