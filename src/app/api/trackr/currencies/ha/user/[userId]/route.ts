@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
-import { trackrHaCurrencyUserDetailResponseSchema } from "@/lib/trackr-schema";
 
 export const runtime = "nodejs";
 
@@ -36,7 +35,7 @@ export async function POST(
     });
     const response = await trackr.getHaCurrencyUser(parsedParams.userId);
 
-    return noStoreJson(trackrHaCurrencyUserDetailResponseSchema.parse(response));
+    return noStoreJson(response);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return noStoreJson(

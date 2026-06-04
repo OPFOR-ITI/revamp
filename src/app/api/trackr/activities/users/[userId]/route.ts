@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
-import { trackrUserActivitiesResponseSchema } from "@/lib/trackr-schema";
 
 export const runtime = "nodejs";
 
@@ -41,7 +40,7 @@ export async function POST(
       sortAscending: false,
     });
 
-    return noStoreJson(trackrUserActivitiesResponseSchema.parse(response));
+    return noStoreJson(response);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return noStoreJson(

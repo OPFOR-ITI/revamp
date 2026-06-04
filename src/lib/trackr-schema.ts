@@ -15,12 +15,18 @@ export const trackrCategorySchema = z.object({
   isHa: z.boolean(),
 });
 
+export const trackrMetricTagSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+});
+
 export const trackrActivitySchema = z.object({
   id: z.string().uuid("Trackr activity id must be a valid UUID."),
   date: z.string(),
   name: z.string(),
   conductingUnit: trackrUnitSchema,
-  category: trackrCategorySchema,
+  category: trackrCategorySchema.optional(),
+  metricTags: z.array(trackrMetricTagSchema).optional(),
   description: z.string().nullable(),
   participatingUnits: z.array(trackrUnitSchema),
   periods: z.number(),
@@ -42,7 +48,7 @@ export const trackrCreateActivityItemSchema = z.object({
   date: z.string(),
   conductingUnitId: z.string().uuid(),
   description: z.string().nullable(),
-  categoryId: z.number().int(),
+  metricTagKeys: z.array(z.string().trim().min(1)).min(1),
 });
 
 export const trackrCreateActivitiesPayloadSchema = z.object({
@@ -123,7 +129,8 @@ export const trackrUserActivitySchema = z
     id: z.string().uuid("Trackr activity id must be a valid UUID."),
     date: z.string(),
     name: z.string(),
-    category: trackrCategorySchema,
+    category: trackrCategorySchema.optional(),
+    metricTags: z.array(trackrMetricTagSchema).optional(),
     description: z.string().nullable(),
     conductingUnit: trackrUnitSchema,
     periods: z.number(),
@@ -133,6 +140,7 @@ export const trackrUserActivitySchema = z
         name: z.string(),
       })
       .passthrough()
+      .nullable()
       .optional(),
   })
   .passthrough();

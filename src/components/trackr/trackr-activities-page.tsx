@@ -74,7 +74,7 @@ import {
 
 const TRACKR_COOKIE_STORAGE_KEY = "revamp.trackr.cookie";
 const TRACKR_COOKIE_TTL_MS = 45 * 60 * 1000;
-const TRACKR_DEFAULT_CATEGORY_ID = 34;
+const TRACKR_DEFAULT_METRIC_TAG_KEY = "ha";
 const TRACKR_DEFAULT_OPFOR_UNIT_NAME = "OPFOR";
 
 const trackrRouteErrorSchema = z.object({
@@ -445,7 +445,7 @@ export function TrackrActivitiesPage() {
                 date: `${selectedCreateConduct.date}T10:00:00.000Z`,
                 conductingUnitId: defaultConductingUnitId.trim(),
                 description: null,
-                categoryId: TRACKR_DEFAULT_CATEGORY_ID,
+                metricTagKeys: [TRACKR_DEFAULT_METRIC_TAG_KEY],
               },
             ],
           },
@@ -481,11 +481,7 @@ export function TrackrActivitiesPage() {
               name: defaultConductingUnitName,
             },
             description: null,
-            category: {
-              id: TRACKR_DEFAULT_CATEGORY_ID,
-              name: "Created Activity",
-              isHa: false,
-            },
+            metricTags: [{ key: TRACKR_DEFAULT_METRIC_TAG_KEY, name: "HA" }],
             participatingUnits: [],
           },
           ...current.filter((activity) => activity.id !== createdActivityId),
@@ -732,8 +728,8 @@ export function TrackrActivitiesPage() {
             <DialogTitle>Create Trackr Activity</DialogTitle>
             <DialogDescription>
               Pick one of your existing local conducts. The Trackr activity uses
-              its name, date, and period count. Category stays fixed at
-              `{TRACKR_DEFAULT_CATEGORY_ID}` and the OPFOR unit comes from your
+              its name, date, and period count. The HA metric tag stays fixed at
+              `{TRACKR_DEFAULT_METRIC_TAG_KEY}` and the OPFOR unit comes from your
               most recently loaded OPFOR Trackr activities.
             </DialogDescription>
           </DialogHeader>

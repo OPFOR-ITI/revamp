@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import {
   trackrUsersQueryPayloadSchema,
-  trackrUsersQueryResponseSchema,
 } from "@/lib/trackr-schema";
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
 
@@ -32,7 +31,7 @@ export async function POST(request: Request) {
     });
     const response = await trackr.queryUsers(parsedRequest.payload);
 
-    return noStoreJson(trackrUsersQueryResponseSchema.parse(response));
+    return noStoreJson(response);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return noStoreJson(

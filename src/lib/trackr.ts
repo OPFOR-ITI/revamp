@@ -1,5 +1,7 @@
 import "server-only";
 
+import { z } from "zod";
+
 import {
   trackrActivitiesResponseSchema,
   trackrActivityAttendanceResponseSchema,
@@ -146,6 +148,30 @@ function getTrackrFailureMessage(response: Response, parsedResponse: unknown) {
   );
 }
 
+function parseTrackrApiResponse<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+  responseName: string,
+) {
+  const parsed = schema.safeParse(value);
+
+  if (!parsed.success) {
+    throw new TrackrError(
+      "TRACKR_RESPONSE_INVALID",
+      `Trackr returned an unexpected ${responseName} response. Refresh your Trackr session cookie and try again; if this keeps happening, Trackr may have changed this API response.`,
+      {
+        status: 502,
+        details: {
+          issues: parsed.error.issues,
+          response: value,
+        },
+      },
+    );
+  }
+
+  return parsed.data;
+}
+
 export class TrackrClient {
   private readonly baseUrl: string;
   private readonly cookie: string;
@@ -178,7 +204,11 @@ export class TrackrClient {
       signal,
     });
 
-    return trackrActivitiesResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrActivitiesResponseSchema,
+      response,
+      "activities",
+    );
   }
 
   async listActivities({
@@ -211,7 +241,7 @@ export class TrackrClient {
       signal,
     });
 
-    return trackrStatusesResponseSchema.parse(response);
+    return parseTrackrApiResponse(trackrStatusesResponseSchema, response, "statuses");
   }
 
   async getActivityAttendance(
@@ -226,7 +256,11 @@ export class TrackrClient {
       },
     );
 
-    return trackrActivityAttendanceResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrActivityAttendanceResponseSchema,
+      response,
+      "activity attendance",
+    );
   }
 
   async getAttendanceUnitTrees(
@@ -240,7 +274,11 @@ export class TrackrClient {
       signal,
     });
 
-    return trackrAttendanceUnitTreesResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrAttendanceUnitTreesResponseSchema,
+      response,
+      "attendance unit trees",
+    );
   }
 
   async patchActivityAttendance(
@@ -264,7 +302,11 @@ export class TrackrClient {
       signal,
     });
 
-    return trackrUsersQueryResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrUsersQueryResponseSchema,
+      response,
+      "users query",
+    );
   }
 
   async createActivities(
@@ -277,7 +319,11 @@ export class TrackrClient {
       signal,
     });
 
-    return trackrCreateActivitiesResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrCreateActivitiesResponseSchema,
+      response,
+      "create activities",
+    );
   }
 
   async getHaCurrencyUnit(
@@ -292,7 +338,11 @@ export class TrackrClient {
       },
     );
 
-    return trackrHaCurrencyUnitResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrHaCurrencyUnitResponseSchema,
+      response,
+      "HA currency unit",
+    );
   }
 
   async getHaCurrencyUser(
@@ -307,7 +357,11 @@ export class TrackrClient {
       },
     );
 
-    return trackrHaCurrencyUserDetailResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrHaCurrencyUserDetailResponseSchema,
+      response,
+      "HA currency user",
+    );
   }
 
   async listUserActivities(
@@ -337,7 +391,11 @@ export class TrackrClient {
       },
     );
 
-    return trackrUserActivitiesResponseSchema.parse(response);
+    return parseTrackrApiResponse(
+      trackrUserActivitiesResponseSchema,
+      response,
+      "user activities",
+    );
   }
 
   async getJson<TResponse>(

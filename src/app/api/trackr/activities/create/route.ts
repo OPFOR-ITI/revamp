@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  trackrCreateActivitiesPayloadSchema,
-  trackrCreateActivitiesResponseSchema,
-} from "@/lib/trackr-schema";
+import { trackrCreateActivitiesPayloadSchema } from "@/lib/trackr-schema";
 import { getTrackrAttendanceUnitsFromTrees } from "@/lib/trackr-config";
 import { createTrackrClient, TrackrError } from "@/lib/trackr";
 
@@ -63,6 +60,12 @@ async function addAllAttendanceUsersForActivity(
   };
 }
 
+function getAttendanceSeedErrorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : "Unexpected error while seeding Trackr attendance users.";
+}
+
 export async function POST(request: Request) {
   try {
     const json = await request.json();
@@ -70,17 +73,30 @@ export async function POST(request: Request) {
     const trackr = createTrackrClient({
       cookie: parsedRequest.cookie,
     });
-    const response = await trackr.createActivities(parsedRequest.payload);
-    const parsedResponse = trackrCreateActivitiesResponseSchema.parse(response);
-    const attendanceSeeds = await Promise.all(
+    const parsedResponse = await trackr.createActivities(parsedRequest.payload);
+    const attendanceSeedResults = await Promise.allSettled(
       parsedResponse.activityIds.map((activityId) =>
         addAllAttendanceUsersForActivity(trackr, activityId),
       ),
+    );
+    const attendanceSeeds = attendanceSeedResults.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const attendanceSeedErrors = attendanceSeedResults.flatMap((result, index) =>
+      result.status === "rejected"
+        ? [
+            {
+              activityId: parsedResponse.activityIds[index] ?? null,
+              message: getAttendanceSeedErrorMessage(result.reason),
+            },
+          ]
+        : [],
     );
 
     return noStoreJson({
       ...parsedResponse,
       attendanceSeeds,
+      attendanceSeedErrors,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -263,8 +263,13 @@ function formatPeriodCount(value: number) {
 }
 
 function isCompletedHaActivity(activity: TrackrUserActivity) {
+  const isHaActivity =
+    activity.category?.isHa ??
+    activity.metricTags?.some((tag) => tag.key.trim().toLowerCase() === "ha") ??
+    false;
+
   return (
-    activity.category.isHa &&
+    isHaActivity &&
     activity.attendanceStatus?.name.trim().toLowerCase() === "present"
   );
 }
