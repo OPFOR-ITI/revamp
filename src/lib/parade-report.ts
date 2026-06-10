@@ -26,6 +26,7 @@ export const PARADE_REPORT_PLATOON_ORDER = [
 ] as const;
 
 export const PARADE_REPORT_COMMANDER_RANKS = new Set([
+  "SCT",
   "3SG",
   "2SG",
   "1SG",
