@@ -190,7 +190,10 @@ export const trackrAttendanceUserAddPayloadSchema = z.object({
 
 export const trackrAttendanceUnitTreeStatsSchema = z
   .object({
-    numDirectMembers: z.number().int().nonnegative(),
+    // Trackr renamed this count when it began filtering for eligible members.
+    // Preserve both versions without treating an absent count as zero.
+    numDirectMembers: z.number().int().nonnegative().optional(),
+    numDirectAndEligibleMembers: z.number().int().nonnegative().optional(),
     numCumulativeMembers: z.number().int().nonnegative(),
     numDirectAttendances: z.number().int().nonnegative(),
     numParticipatingUnitsWithMembers: z.number().int().nonnegative(),

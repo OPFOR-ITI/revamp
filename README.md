@@ -84,6 +84,25 @@ await trackr.submitAttendanceUnits({
 Use this from route handlers, server components, or server actions. Do not
 import it into client components because it carries your Trackr session cookie.
 
+Trackr attendance trees can report either `numDirectMembers` or
+`numDirectAndEligibleMembers`. Both are optional and validated when present;
+attendance units are derived from the tree IDs, not these counts.
+
+Run `npm run test:trackr` with Node.js 22.15 or newer for the schema regressions.
+To also check the attendance-review route over real HTTP, run these
+commands in separate terminals with Postman CLI 1.70 or newer:
+
+```sh
+postman simulation run postman/simulations/trackr.sim.yaml --port 4900 --output ndjson
+TRACKR_SIMULATION_URL=http://127.0.0.1:4900 npm run test:trackr
+```
+
+The simulation uses synthetic identities and the attendance-tree structure
+observed from Trackr on 2026-10-21. It covers tree loading, user queries,
+attendance loading, and status loading without changing live attendance.
+No published Trackr mock was consulted because the local Postman CLI was signed
+out. The simulation needs no Trackr cookie or Postman login.
+
 ## Commands
 
 - `pnpm dev` starts Next.js and Convex together.

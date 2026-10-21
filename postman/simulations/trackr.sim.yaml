@@ -1,0 +1,5 @@
+simulation: trackr-attendance-regression
+routing: header
+mocks:
+  - routeKey: trackr
+    path: ../mocks/trackr/config.yaml

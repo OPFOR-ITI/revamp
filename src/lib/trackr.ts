@@ -158,7 +158,7 @@ function parseTrackrApiResponse<T>(
   if (!parsed.success) {
     throw new TrackrError(
       "TRACKR_RESPONSE_INVALID",
-      `Trackr returned an unexpected ${responseName} response. Refresh your Trackr session cookie and try again; if this keeps happening, Trackr may have changed this API response.`,
+      `Trackr returned an unexpected ${responseName} response. Trackr may have changed this API response.`,
       {
         status: 502,
         details: {
